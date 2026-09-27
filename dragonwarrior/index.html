@@ -57,7 +57,8 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background
 .brand{display:flex;align-items:baseline;gap:10px;margin-right:auto}
 .brand h1{font-size:2rem;text-transform:uppercase}
 @media (max-width:420px){.brand h1{font-size:1.55rem}.brand .sync{display:none}nav.tabs button{padding:8px 10px}}
-.cal .c:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.cal .c:focus-visible{box-shadow:0 0 0 3px var(--bg),0 0 0 6px var(--accent)}
+@media (max-width:360px){.dtogs{gap:3px}.dtog{font-size:.78rem;letter-spacing:0}.setup-inner h2{font-size:1.8rem!important}.setup-top .brand h1{font-size:1.3rem}.opt{padding:12px}}
 .brand h1 span{color:var(--accent)}
 .sync{font-size:.8rem;color:var(--muted)}
 nav.tabs{display:flex;gap:4px;background:var(--sunk);padding:4px;border-radius:10px;overflow-x:auto;max-width:100%}
@@ -252,7 +253,7 @@ footer.fine{font-size:.85rem;color:var(--muted);max-width:75ch}
             <div class="field"><label for="f-age">Age</label><input id="f-age" name="age" type="number" min="14" max="90" inputmode="numeric"></div>
           </div>
           <div class="pair" id="heightMetric">
-            <div class="field"><label for="f-cm">Height (cm)</label><input id="f-cm" type="number" min="120" max="230" inputmode="decimal"></div>
+            <div class="field"><label for="f-cm">Height (cm)</label><input id="f-cm" type="number" min="122" max="228" inputmode="decimal"></div>
             <div class="field"><label for="f-kg">Weight (kg)</label><input id="f-kg" type="number" min="35" max="250" step="0.1" inputmode="decimal"></div>
           </div>
           <div class="pair" id="heightImperial" hidden>
@@ -702,23 +703,29 @@ function sessionForDay(dayIdx){const i=trainDays().indexOf(dayIdx);return i<0?nu
 function sessionSlots(sk){const p=state.profile,cap={30:4,45:5,60:6}[p.length]||6;let sl=SESS[sk].s.slice();
   if(p.style==="warrior"){const alt=SPLITS[p.days].s.indexOf(sk)%2?"2":"",n=Math.max(2,cap-2);let lifts=sl.slice(0,n);
     if(n===2){const pull=sl.find(x=>x==="hpull"||x==="vpull");if(pull&&!lifts.includes(pull))lifts=[sl[0],pull]}
-    return ["power"+alt,...lifts,"cond"+alt]}
-  return sl.slice(0,cap)}
+    const out=["power"+alt,...lifts,"cond"+alt];return fitTime(out,3)}
+  return fitTime(sl.slice(0,cap),3)}
+// drop the last lifting exercise until the session fits the chosen length
+function fitTime(list,minN){const lim=(Number(state.profile.length)||60)+5-(hasFinisher()?10:0);list=list.slice();
+  while(list.length>minN&&estSlots(list)>lim){let i=list.length-1;while(i>=0&&/^(power|cond)/.test(list[i]))i--;if(i<=0||(list[0].startsWith("power")&&i<=1))break;list.splice(i,1)}
+  return list}
 function equipIdx(){return {gym:0,home:1,bw:2}[state.profile.equip]}
 // circuits use dumbbell variants in the gym: no barbells on a timer
 function exIdx(){const p=state.profile;return p.style==="burn"&&p.equip==="gym"?1:equipIdx()}
 const STRENGTH_MAIN=new Set(["squat","hinge","hinge2","hpush","vpush"]);
 const UNILATERAL=["bss","slrdl","revlunge","walklunge","dbrow","glutebridge"];
-function estMinutes(sk){const ei=exIdx(),stl=state.profile.style||"muscle";let sec=8*60;
-  sessionSlots(sk).forEach(slot=>{const k=MAP[slot][ei],rx=prescription(slot,k),n=parseInt(rx,10)||3;
-    if(COND[k]){sec+={sprints:13,shadowbox:15,burpee:8}[k]*60;return}
-    const comp=COMPOUND.has(slot),rest=stl==="burn"?20:stl==="strength"?(comp?180:90):stl==="warrior"?(slot.startsWith("power")?75:comp?120:75):(comp?105:75);
-    sec+=n*((stl==="burn"?40:45)+rest)*(UNILATERAL.includes(k)&&stl!=="burn"?1.6:1)});
-  if(stl==="burn"){const rounds=parseInt(prescription(sessionSlots(sk)[0],MAP[sessionSlots(sk)[0]][ei]),10)||3;sec+=rounds*90}
-  return Math.round(sec/300)*5}
+function estSlots(slots){const ei=exIdx(),stl=state.profile.style||"muscle",short=Number(state.profile.length)<=30;let sec=8*60;
+  slots.forEach(slot=>{const k=MAP[slot][ei],rx=prescription(slot,k),n=parseInt(rx,10)||3;
+    if(COND[k]){sec+=(short?{sprints:9,shadowbox:9,burpee:6}:{sprints:14,shadowbox:15,burpee:8})[k]*60;return}
+    const comp=COMPOUND.has(slot),rest=stl==="burn"?20:stl==="strength"?(comp?150:75):stl==="warrior"?(slot.startsWith("power")?60:comp?105:60):(comp?90:60);
+    const uni=UNILATERAL.includes(k)&&stl!=="burn";sec+=n*(40*(uni?2:1)+rest*(stl==="strength"&&!STRENGTH_MAIN.has(slot)?0.8:1))});
+  if(stl==="burn"&&slots.length){const rounds=parseInt(prescription(slots[0],MAP[slots[0]][ei]),10)||3;sec+=rounds*90}
+  return sec/60}
+function hasFinisher(){const p=state.profile;return p.goal==="lose"&&((p.style==="muscle"||!p.style)&&Number(p.length)>=45||p.style==="strength"&&Number(p.length)>=60)}
+function estMinutes(sk){return Math.round((estSlots(sessionSlots(sk))+(hasFinisher()?10:0))/5)*5}
 function prescription(slot,exKey){
   const p=state.profile,beg=p.level==="beginner",bw=p.equip==="bw",st=p.style||"muscle";
-  if(COND[exKey])return COND[exKey];
+  if(COND[exKey])return Number(p.length)<=30?{sprints:"6 × 20 s hard / 40 s easy",shadowbox:"3 × 2 min rounds, 1 min rest",burpee:"4 × 10, 45 s rest"}[exKey]:COND[exKey];
   if(slot.startsWith("power"))return (beg?3:4)+" × "+(exKey==="kbswing"?"12–15":"3–5")+", explosive";
   if(st==="burn"){const r={30:3,45:beg?3:4,60:beg?4:5}[p.length]||4;
     if(exKey==="pullup"||exKey==="chinup")return r+" rounds × 3–6 reps (band or 5 s lowering if needed)";
@@ -735,6 +742,7 @@ function prescription(slot,exKey){
   else if(st==="warrior"){sets=comp?(beg?3:4):3;reps=comp?"5–8":"10–15"}
   else if(p.goal==="lose"){sets=3;reps=comp?"8–12":"12–15"}
   else{sets=comp?(beg?3:4):3;reps=comp?"6–10":"10–15"}
+  const L=Number(p.length)||60;sets=Math.min(sets,L<=30?(comp?3:2):L<=45?4:5);
   let tail="";
   if(bw&&comp&&exKey!=="pullup"){reps=st==="strength"?"5–10":"8–20";if(st==="strength")tail=", 3 s lowering"}
   if(exKey==="pullup"||exKey==="chinup")reps=beg?"3–8 (band or 5 s lowering if needed)":"as many as you can, stop 1 short";
@@ -774,8 +782,9 @@ function renderPlan(){
   }[p.goal];
   const extra=[];
   if(T.lowFloor)extra.push("Your maintenance calories are below the safe minimum for dieting, so this plan holds you at maintenance. Lose fat through training, steps and protein, and talk to a doctor or dietitian before eating less.");
-  if(T.teen)extra.push("You're under 18: this plan uses a gentle calorie cut and your body is still growing. Check big diet changes with a parent, doctor or coach.");
-  $("tips").innerHTML=[...extra,...tips].map(t=>`<li>${esc(t)}</li>`).join("");
+  if(T.teen)extra.push(p.goal==="lose"?"You're under 18 and still growing, so this plan uses a gentler calorie cut. Check big diet changes with a parent, doctor or coach.":"You're under 18 and still growing. Eat regular meals, don't skip food around training, and check big diet changes with a parent, doctor or coach.");
+  const shown=T.lowFloor?tips.filter(t=>!/Aim to lose/.test(t)):tips;
+  $("tips").innerHTML=[...extra,...shown].map(t=>`<li>${esc(t)}</li>`).join("");
 }
 
 /* ---------- render: workouts ---------- */
@@ -785,7 +794,7 @@ function renderWorkouts(){
   const rest={strength:"3 min on big lifts, 90 s on the rest",muscle:"90 s–2 min on big lifts, 60–90 s on the rest",burn:"20 s between exercises, 90 s between rounds",warrior:"60–90 s after power sets, 2 min on lifts, as written for conditioning"}[st];
   const effort={strength:"Leave 1–2 reps in the tank. Never grind a heavy rep with bad form",muscle:"Stop each set with 1–3 reps left in the tank",burn:"Steady hard pace you can hold for the full 40 s",warrior:"Power sets fast and crisp; lifts with 1–2 reps left; conditioning near max"}[st];
   const prog={strength:"Hit every rep? Add 2.5 kg / 5 lb to upper lifts and 5 kg / 10 lb to lower lifts next time",muscle:"Hit the top of the rep range on every set? Add a little weight next time",burn:"Add a round, or more reps inside the 40 s, once it feels manageable",warrior:"Add weight to the lifts, jump higher or swing heavier, and add a conditioning round every 2 weeks"}[st];
-  const finisher=p.goal==="lose"&&(st==="muscle"||st==="strength")&&Number(p.length)>=45;
+  const finisher=hasFinisher();
   const rules=[
     ["Warm-up","5 min easy cardio, then 2 light sets of the first exercise"],
     ["Effort",effort],["Rest",rest],["Progress",prog],
@@ -984,9 +993,9 @@ $("profileForm").addEventListener("change",e=>{
   const num=x=>{const n=parseFloat(x);return isFinite(n)?n:null};
   if(id==="f-sex")p.sex=v;
   else if(id==="f-age"){const n=num(v);if(n&&n>=14&&n<=90)p.age=Math.round(n)}
-  else if(id==="f-cm"){const n=num(v);if(n&&n>=120&&n<=230)p.cm=n}
+  else if(id==="f-cm"){const n=num(v);if(n&&n>=122&&n<=228)p.cm=n}
   else if(id==="f-kg"){const n=num(v);if(n&&n>=35&&n<=250)p.kg=n}
-  else if(id==="f-ft"||id==="f-in"){const ft=num($("f-ft").value),inch=num($("f-in").value);if(ft!=null&&inch!=null&&ft>=4&&ft<=7&&inch>=0&&inch<12){const cm=(ft*12+inch)*2.54;if(cm>=121.9&&cm<=228.6)p.cm=cm}}
+  else if(id==="f-ft"||id==="f-in"){const ft=num($("f-ft").value),inch=num($("f-in").value);if(ft!=null&&inch!=null&&ft>=4&&ft<=7&&inch>=0&&inch<12){const tot=ft*12+inch,cm=tot*2.54;if(tot!==Math.round(state.profile.cm/2.54)&&cm>=121.9&&cm<=228.6)p.cm=cm}}
   else if(id==="f-lb"){const n=num(v);if(n&&n>=80&&n<=550)p.kg=lbToKg(n)}
   else if(id==="f-activity")p.activity=Number(v);
   else if(id==="f-meals")p.meals=Number(v);
@@ -1046,7 +1055,7 @@ $("w-save").addEventListener("click",()=>{const imp=state.profile.units==="imper
   if(zs&&!(cm>=40&&cm<=200)){msg.textContent=imp?"Enter a waist between 16 and 79 in.":"Enter a waist between 40 and 200 cm.";$("waist-in").focus();return}
   const had=state.weights[trackKey]||state.waist[trackKey];
   if(!ws&&!zs&&!had){msg.textContent="Enter your weight, your waist, or both.";$("w-in").focus();return}
-  if(ws){state.weights[trackKey]=kg;if(trackKey===dkey(new Date()))state.profile.kg=kg}else delete state.weights[trackKey];
+  if(ws){state.weights[trackKey]=kg;if(trackKey===dkey(new Date()))state.profile.kg=kg}else{delete state.weights[trackKey];const latest=Object.keys(state.weights).sort().pop();if(latest&&trackKey>=latest)state.profile.kg=state.weights[latest]}
   if(zs)state.waist[trackKey]=cm;else delete state.waist[trackKey];
   msg.textContent=ws||zs?"Saved.":"Removed this day's measurements.";
   save();renderAll()});
@@ -1084,7 +1093,7 @@ function renderSetup(){
     <div class="field"><label id="sl-lvl">Experience</label><div class="seg" role="group" aria-labelledby="sl-lvl" style="max-width:420px">${sb("level","beginner","Beginner (under 1 year)")}${sb("level","intermediate","1 year or more")}</div></div>
     <div class="field"><label id="sl-eq">Where you train</label><div class="opts" role="group" aria-labelledby="sl-eq">${opt("equip","gym","Gym","Barbells, cables and machines.")}${opt("equip","home","Home with dumbbells","A pair of adjustable dumbbells and a bench or couch.")}${opt("equip","bw","Bodyweight only","No equipment. A pull-up bar helps.")}</div></div>`}
   else if(step==="style"){const rec={lose:"burn",gain:"muscle",maintain:"warrior"}[d.goal];
-    const eg=k=>withProfile({...d,style:k,days:d.trainDays.length>=2&&d.trainDays.length<=6?d.trainDays.length:d.days},()=>{const sk=SPLITS[state.profile.days].s[0],ei=exIdx();return SESS[sk].n+" (about "+estMinutes(sk)+" min): "+sessionSlots(sk).slice(0,4).map(sl=>EX[MAP[sl][ei]].n+" "+prescription(sl,MAP[sl][ei]).replace(/ \(.*\)/,"")).join(", ")+(sessionSlots(sk).length>4?", …":"")});
+    const eg=k=>withProfile({...d,style:k,days:d.trainDays.length>=2&&d.trainDays.length<=6?d.trainDays.length:d.days},()=>{const sk=SPLITS[state.profile.days].s[0],ei=exIdx();return SESS[sk].n+" (about "+estMinutes(sk)+" min): "+sessionSlots(sk).slice(0,4).map(sl=>EX[MAP[sl][ei]].n+" ("+prescription(sl,MAP[sl][ei]).replace(/ \(.*\)/,"")+")").join(" · ")+(sessionSlots(sk).length>4?" · …":"")});
     h=head("What kind of workouts?","Pick the style you'll enjoy and stick with. You can change it any time.")+`<div class="opts">${["warrior","muscle","strength","burn"].map(k=>opt("style",k,STYLES[k].n,STYLES[k].d,{tag:k===rec?"Recommended for your goal":"",eg:"Example day. "+eg(k)})).join("")}</div>`}
   else if(step==="food")h=head("How do you eat?","Your meal plan and shopping list only use foods that fit.")+`<div class="opts">${opt("diet","omni","Everything","Meat, fish, eggs, dairy and plants.")}${opt("diet","veg","Vegetarian","Eggs and dairy, no meat or fish.")}${opt("diet","vegan","Vegan","Plants only.")}</div><div class="field"><label id="sl-meals">Meals a day</label><div class="seg" role="group" aria-labelledby="sl-meals" style="max-width:420px">${sb("meals",3,"3 meals")}${sb("meals",4,"3 meals + a snack")}</div></div>`;
   else{const r=withProfile({...d,days:d.trainDays.length},()=>{const T=targets();return{T,week:DAYS.map((nm,j)=>{const s=sessionForDay(j);return `<div class="day ${s?"train":""}"><span class="d">${nm}</span><span class="s">${s?SESS[s].n:"Rest"}</span></div>`}).join("")}});
@@ -1103,7 +1112,7 @@ function renderSetup(){
 function validStep(){const d=wz.d,step=STEPS[wz.i];
   if(step==="body"){const imp=d.units==="imperial";if(!(d.age>=14&&d.age<=90))return "Enter an age between 14 and 90.";
     if(imp){if(!(d.cm>=121.9&&d.cm<=228.6))return "Enter a height between 4 ft 0 in and 7 ft 6 in (inches 0 to 11).";const lb=kgToLb(d.kg);if(!(lb>=79.95&&lb<=550.05))return "Enter a weight between 80 and 550 lb.";}
-    else{if(!(d.cm>=120&&d.cm<=230))return "Enter a height between 120 and 230 cm.";if(!(d.kg>=35&&d.kg<=250))return "Enter a weight between 35 and 250 kg.";}}
+    else{if(!(d.cm>=122&&d.cm<=228))return "Enter a height between 122 and 228 cm.";if(!(d.kg>=35&&d.kg<=250))return "Enter a weight between 35 and 250 kg.";}}
   if(step==="training"){const n=d.trainDays.length;if(n<2)return "Pick at least 2 training days.";if(n>6)return "Pick 6 days or fewer. Your body needs at least one full rest day.";}
   return "";}
 $("setup").addEventListener("click",e=>{if(!wz)return;const d=wz.d;
