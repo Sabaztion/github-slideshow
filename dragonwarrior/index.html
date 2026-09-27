@@ -263,6 +263,18 @@ textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:
 .today{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .today .big{font-size:1.3rem;white-space:nowrap}
 @media (max-width:560px){.today{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.ph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,120px),1fr));gap:10px}
+.ph{position:relative;border-radius:10px;overflow:hidden;background:var(--sunk);aspect-ratio:3/4;border:0;padding:0;cursor:pointer;display:block;width:100%}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph .cap{position:absolute;left:0;right:0;bottom:0;padding:4px 6px;background:linear-gradient(transparent,rgb(0 0 0 / .7));color:#fff;font-size:.75rem;text-align:left}
+.ph[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:-3px}
+.compare{position:relative;width:100%;max-width:420px;aspect-ratio:3/4;border-radius:14px;overflow:hidden;background:var(--sunk);margin:0 auto;touch-action:none}
+.compare img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.compare .after{clip-path:inset(0 0 0 50%)}
+.compare .handle{position:absolute;top:0;bottom:0;left:50%;width:3px;background:#fff;box-shadow:0 0 0 1px rgb(0 0 0 / .3);pointer-events:none}
+.compare .tag{position:absolute;top:8px;padding:3px 8px;border-radius:999px;background:rgb(0 0 0 / .6);color:#fff;font-size:.75rem;font-weight:600}
+.compare input[type=range]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:ew-resize;margin:0}
+.side2{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:520px;margin:0 auto}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.85rem;color:var(--muted)}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 .empty{padding:14px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:.95rem}
@@ -439,6 +451,7 @@ footer.fine{font-size:.85rem;color:var(--muted);max-width:75ch}
           <p class="err" id="bodyMsg" role="status" style="min-height:0"></p>
           <div class="chart" id="wChart"></div>
           <div class="note" id="waistNote"></div>
+          <button class="btn ghost" type="button" data-go="progress" style="justify-self:start">Take a progress photo →</button>
         </div>
       </div>
       <div class="stack">
@@ -480,6 +493,18 @@ footer.fine{font-size:.85rem;color:var(--muted);max-width:75ch}
       <p class="note" style="margin:0">Arrows compare with the 7 days before.</p>
     </div>
     <div class="card stack" id="checkin"></div>
+    <div class="card stack" id="photosCard">
+      <div class="row" style="justify-content:space-between"><h2>Progress photos</h2><span class="chip" id="photoDue"></span></div>
+      <p class="note" style="margin:0;max-width:68ch">Photos stay on this device only. They are never uploaded, shared or included in backups. Same spot, same light, same time of day, every 2–4 weeks.</p>
+      <div class="row">
+        <div class="seg" id="poseSeg" role="group" aria-label="Pose"><button type="button" data-v="front">Front</button><button type="button" data-v="side">Side</button><button type="button" data-v="back">Back</button></div>
+        <label class="btn primary" for="photoIn" style="cursor:pointer">Add photo</label>
+        <input id="photoIn" type="file" accept="image/*" capture="environment" style="position:absolute;width:1px;height:1px;opacity:0">
+        <span class="note" id="photoMsg" role="status"></span>
+      </div>
+      <div id="compareBox"></div>
+      <div class="ph-grid" id="photoGrid"></div>
+    </div>
     <div class="card stack">
       <div class="row" style="justify-content:space-between"><h2>Achievements</h2><span class="chip" id="badgeCount"></span></div>
       <div class="badges" id="badges"></div>
@@ -1168,7 +1193,7 @@ function renderChart(){
 
 /* ---------- wiring ---------- */
 function renderProgress(){
-  renderCheckin();renderBadges();
+  renderCheckin();renderBadges();if(photos&&photos.length||photoDB)renderPhotos();
   const T=targets(),now=new Date(),todayK=dkey(now);
   const back=n=>Array.from({length:n},(_,i)=>{const d=new Date(now);d.setDate(d.getDate()-i);return dkey(d)});
   const k14=back(14),a7=k14.slice(0,7),b7=k14.slice(7);
@@ -1403,6 +1428,42 @@ function renderCheckin(){const p=state.profile,now=new Date(),back=n=>{const d=n
     if(sug&&!applied)btn=`<button class="btn primary" type="button" data-adj="${sug}">Apply ${sug>0?"+":"−"}${Math.abs(sug)} kcal</button>`}
   $("checkin").innerHTML=`<div class="row" style="justify-content:space-between"><h2>Weekly check-in</h2>${adj?`<span class="chip on">Plan adjusted ${adj>0?"+":"−"}${Math.abs(adj)} kcal</span>`:""}</div><p style="margin:0;max-width:68ch">${body}</p><div class="row">${btn}${adj?`<button class="btn ghost" type="button" data-adj="reset">Reset adjustment</button>`:""}</div>`}
 
+/* ---------- progress photos (IndexedDB, device only) ---------- */
+let photoDB=null,photos=[],phPose="front",pick={};const urls=new Map();
+function openPhotoDB(){return new Promise((res,rej)=>{try{const r=indexedDB.open("dragonwarrior-photos",1);r.onupgradeneeded=()=>r.result.createObjectStore("p",{keyPath:"id"});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}})}
+function tx(mode,fn){return new Promise((res,rej)=>{const t=photoDB.transaction("p",mode),st=t.objectStore("p"),out=fn(st);t.oncomplete=()=>res(out&&out.result);t.onerror=()=>rej(t.error)})}
+async function loadPhotos(){try{photoDB=photoDB||await openPhotoDB();const all=await new Promise((res,rej)=>{const r=photoDB.transaction("p").objectStore("p").getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+  photos=all.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:a.t-b.t)}catch(e){photos=null}renderPhotos()}
+function photoURL(ph){if(!urls.has(ph.id))urls.set(ph.id,URL.createObjectURL(ph.blob));return urls.get(ph.id)}
+function shrink(file){return new Promise((res,rej)=>{const img=new Image(),u=URL.createObjectURL(file);img.onload=()=>{const m=1100,sc=Math.min(1,m/Math.max(img.width,img.height)),c=document.createElement("canvas");
+  c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);c.getContext("2d").drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(b=>b?res(b):rej(new Error("encode")),"image/jpeg",0.82)};img.onerror=()=>{URL.revokeObjectURL(u);rej(new Error("read"))};img.src=u})}
+function measureOn(k){const w=state.weights[k],z=state.waist[k],imp=state.profile.units==="imperial";return [w?showW(w).toFixed(1)+" "+wUnit():"",z?(imp?z/2.54:z).toFixed(1)+(imp?" in waist":" cm waist"):""].filter(Boolean).join(" · ")}
+function renderPhotos(){document.querySelectorAll("#poseSeg button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v===phPose)));
+  if(photos===null){$("photoGrid").innerHTML=`<div class="empty">This browser is blocking on-device storage (private mode or blocked site data), so photos can't be saved here.</div>`;$("compareBox").innerHTML="";$("photoDue").textContent="";return}
+  const list=photos.filter(p=>p.pose===phPose),last=photos.length?photos[photos.length-1].date:null;
+  if(last){const days=Math.round((fromKey(dkey(new Date()))-fromKey(last))/864e5),due=21-days;$("photoDue").textContent=due>0?`Next photo in ${due} day${due===1?"":"s"}`:"Time for a new photo";$("photoDue").className="chip"+(due>0?"":" on")}else{$("photoDue").textContent="No photos yet";$("photoDue").className="chip"}
+  $("photoGrid").innerHTML=list.length?list.map(ph=>`<button type="button" class="ph" data-ph="${ph.id}" aria-pressed="${pick.b===ph.id||pick.a===ph.id}" aria-label="${esc(ph.pose)} photo from ${shortDate(ph.date)}"><img src="${photoURL(ph)}" alt=""><span class="cap">${shortDate(ph.date)}${pick.b===ph.id?" · before":pick.a===ph.id?" · after":""}</span></button>`).join(""):`<div class="empty">No ${phPose} photos yet. Tap Add photo to take or pick one. Your first photo becomes your "before".</div>`;
+  // compare: default earliest vs latest for this phPose
+  if(list.length>=2){let b=list.find(x=>x.id===pick.b)||list[0],a=list.find(x=>x.id===pick.a)||list[list.length-1];if(a.id===b.id){b=list[0];a=list[list.length-1]}
+    const days=Math.round((fromKey(a.date)-fromKey(b.date))/864e5),wb=state.weights[b.date],wa=state.weights[a.date],zb=state.waist[b.date],za=state.waist[a.date],imp=state.profile.units==="imperial";
+    const diffs=[wb&&wa?`${(showW(wa)-showW(wb)>0?"+":"")+(showW(wa)-showW(wb)).toFixed(1)} ${wUnit()}`:"",zb&&za?`${((za-zb)/(imp?2.54:1)>0?"+":"")+((za-zb)/(imp?2.54:1)).toFixed(1)} ${imp?"in":"cm"} waist`:""].filter(Boolean).join(" · ");
+    $("compareBox").innerHTML=`<div class="stack" style="gap:10px"><div class="compare" id="cmp"><img src="${photoURL(b)}" alt="Before, ${shortDate(b.date)}"><img class="after" src="${photoURL(a)}" alt="After, ${shortDate(a.date)}"><span class="handle"></span><span class="tag" style="left:8px">Before · ${shortDate(b.date)}</span><span class="tag" style="right:8px">After · ${shortDate(a.date)}</span><input type="range" min="0" max="100" value="50" id="cmpRange" aria-label="Drag to compare before and after"></div>
+      <p class="note" style="margin:0;text-align:center"><strong style="color:var(--ink)">${days} days</strong> apart${diffs?" · "+diffs:""}. Drag across the photo to compare. Tap photos below to choose which two.</p>
+      <div class="row" style="justify-content:center"><button class="btn ghost" type="button" data-phdel="${a.id}">Delete the "after" photo</button></div></div>`;
+    const r=$("cmpRange"),cmp=$("cmp");r.addEventListener("input",()=>{cmp.querySelector(".after").style.clipPath=`inset(0 0 0 ${r.value}%)`;cmp.querySelector(".handle").style.left=r.value+"%"})}
+  else $("compareBox").innerHTML=list.length?`<p class="note" style="margin:0">Add a second ${phPose} photo in a few weeks to unlock the before and after slider.${list[0]?` <button class="btn ghost" type="button" data-phdel="${list[0].id}">Delete this photo</button>`:""}</p>`:""}
+$("poseSeg").addEventListener("click",e=>{const b=e.target.closest("button[data-v]");if(!b)return;phPose=b.dataset.v;pick={};renderPhotos()});
+$("photoIn").addEventListener("change",async()=>{const f=$("photoIn").files[0];$("photoIn").value="";if(!f)return;const msg=$("photoMsg");
+  if(!/^image\//.test(f.type)){msg.textContent="That file isn't a photo.";return}msg.textContent="Saving…";
+  try{photoDB=photoDB||await openPhotoDB();const blob=await shrink(f),date=trackKey<=dkey(new Date())?trackKey:dkey(new Date());
+    const rec={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),date,pose:phPose,t:Date.now(),blob};await tx("readwrite",st=>st.put(rec));pick={};msg.textContent=`Saved ${phPose} photo for ${shortDate(date)}.`;await loadPhotos()}
+  catch(e){msg.textContent="Couldn't save that photo on this device. Storage may be blocked or full."}});
+let delArmed=null;
+$("photosCard").addEventListener("click",async e=>{const t=e.target.closest("[data-ph]");if(t){const id=t.dataset.ph;
+    if(pick.b===id||pick.a===id){pick={};}else if(!pick.b||pick.a){pick={b:id}}else{const P=photos.find(x=>x.id===pick.b),Q=photos.find(x=>x.id===id);pick=P&&Q&&P.date>Q.date?{b:id,a:pick.b}:{b:pick.b,a:id}}renderPhotos();return}
+  const d=e.target.closest("[data-phdel]");if(!d)return;if(delArmed!==d.dataset.phdel){delArmed=d.dataset.phdel;d.textContent="Tap again to delete for good";return}
+  delArmed=null;try{await tx("readwrite",st=>st.delete(d.dataset.phdel));if(urls.has(d.dataset.phdel)){URL.revokeObjectURL(urls.get(d.dataset.phdel));urls.delete(d.dataset.phdel)}pick={};$("photoMsg").textContent="Photo deleted.";await loadPhotos()}catch(err){$("photoMsg").textContent="Couldn't delete that photo."}});
+
 /* ---------- achievements ---------- */
 function badgeIcon(kind,color){const c=color||"var(--accent)";const shapes={
   flame:`<path d="M22 6c2 7 9 9 9 18a9 9 0 0 1-18 0c0-5 3-7 4-11 1 3 3 4 5 5-1-5-1-8 0-12z" fill="${c}"/>`,
@@ -1512,6 +1573,7 @@ setTab(["plan","workouts","meals","track","progress"].includes(hash)?hash:(lsGet
 renderAll();
 if(!state.setupDone){if(state.profile.example)openSetup(0);else{state.setupDone=true;save()}}
 initCloud();
+loadPhotos();
 })();
 </script>
 </body>
