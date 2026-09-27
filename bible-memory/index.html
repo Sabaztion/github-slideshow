@@ -112,7 +112,27 @@
   .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
   .ref-big { font-size: 26px; font-weight: 800; margin: 0; }
 
-  .tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+  .tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 14px; }
+
+  .lesson-big { font-size: 26px; font-weight: 800; color: var(--primary); margin: 0 0 6px; line-height: 1.2; }
+  .lesson-verse {
+    background: var(--chip); border-radius: 16px; padding: 12px 14px; font-size: 20px; font-weight: 600;
+    margin: 10px 0;
+  }
+  .lesson-verse cite { display: block; font-style: normal; font-weight: 800; font-size: 16px; color: var(--muted); margin-top: 4px; }
+  .step { border-top: 2px dashed var(--line); padding-top: 12px; margin-top: 14px; }
+  .step h3 { margin: 0 0 6px; font-size: 20px; }
+  .step p { margin: 0; }
+  .words-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+  .words-list li { background: var(--bg); border: 2px solid var(--line); border-radius: 12px; padding: 6px 10px; }
+  .words-list b { color: var(--primary); }
+  .quiz-opts { display: grid; gap: 8px; margin-top: 8px; }
+  .quiz-opt { text-align: left; border: 2px solid var(--line); background: var(--bg); border-radius: 14px; padding: 10px 14px; font-weight: 700; }
+  .quiz-opt.right { background: var(--mint); border-color: var(--mint); color: #10352a; }
+  .quiz-opt.nope { background: var(--coral); border-color: var(--coral); color: #3b0d0d; }
+  .quiz-msg { font-weight: 800; margin-top: 8px; min-height: 1.4em; }
+  .prayer { font-style: italic; }
+  .grownup { font-size: 15px; color: var(--muted); }
   .tab {
     border: 2px solid var(--line); background: var(--card); border-radius: 14px;
     padding: 8px 4px; font-weight: 700; font-size: 15px; line-height: 1.15;
@@ -201,8 +221,10 @@
   <!-- Home: pick a verse -->
   <main id="home">
     <div class="card">
-      <strong>How to play:</strong> pick a verse, then try each game. Finish <em>Build It</em> to earn a star.
+      <strong>How it works:</strong> pick a verse and start with the 📚 <em>Lesson</em> to learn what it means.
+      Then practice it with the games. Finish <em>Build It</em> to earn a star.
       Get 3 stars and the verse is memorized! 🏆
+      <div class="grownup" style="margin-top:6px">Grown-ups: each lesson has a talk question, a quiz, a "live it" challenge and a prayer to do together.</div>
     </div>
     <h2 class="section-title">Pick a verse</h2>
     <div class="verse-grid" id="verseGrid"></div>
@@ -233,6 +255,7 @@
     <p class="ref-big" id="practiceRef"></p>
 
     <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-mode="lesson"><span class="ic">📚</span>Lesson</button>
       <button class="tab" role="tab" data-mode="read"><span class="ic">👀</span>Read</button>
       <button class="tab" role="tab" data-mode="hide"><span class="ic">🙈</span>Hide Words</button>
       <button class="tab" role="tab" data-mode="letters"><span class="ic">🔤</span>First Letters</button>
@@ -265,6 +288,149 @@
     { id: "jn3-16",  emoji: "🎁", ref: "John 3:16", text: "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life." },
     { id: "jos1-9",  emoji: "🦁", ref: "Joshua 1:9", text: "Have not I commanded thee? Be strong and of a good courage; be not afraid, neither be thou dismayed: for the LORD thy God is with thee whithersoever thou goest." }
   ];
+  // Teaching content for each built-in verse. Custom verses get a general lesson (see genericLesson).
+  var LESSONS = {
+    "gen1-1": {
+      big: "God made everything!",
+      meaning: "Before anything else existed, God was already there. He made the sky, the stars, the land, the sea, and everything in them. The whole world belongs to Him because He made it.",
+      words: [["beginning", "the very start, before anything else"], ["created", "made something new out of nothing"]],
+      talk: "What is your favorite thing God made? Why do you like it?",
+      quiz: { q: "Who made the heaven and the earth?", options: ["People", "God", "Nobody"], answer: 1 },
+      doIt: "Go outside and find 3 things God made. Say thank you to God for each one.",
+      prayer: "Dear God, thank You for making the whole world, and for making me too. Amen."
+    },
+    "1jn4-19": {
+      big: "God loved us first.",
+      meaning: "God did not wait for us to be good before He loved us. He loved us first! When we know how much God loves us, it makes us want to love Him back.",
+      words: [["because", "tells us the reason why"], ["first", "before anyone else"]],
+      talk: "How can you tell that someone loves you? How has God shown His love to you?",
+      quiz: { q: "Who loved first?", options: ["We did", "God did", "Our friends did"], answer: 1 },
+      doIt: "Show love to someone first this week, before they do something nice for you.",
+      prayer: "Dear God, thank You for loving me first. Help me love You and love others. Amen."
+    },
+    "ps23-1": {
+      big: "God takes care of me like a shepherd.",
+      meaning: "A shepherd watches over his sheep. He finds them food and water and keeps them safe. King David, who was a shepherd boy, wrote that God is like that for us. With God caring for us, we have what we truly need.",
+      words: [["shepherd", "a person who takes care of sheep"], ["I shall not want", "I will have what I need"]],
+      talk: "What does a good shepherd do for his sheep? How does God take care of you?",
+      quiz: { q: "In this verse, who is like our shepherd?", options: ["The LORD", "A farmer", "A teacher"], answer: 0 },
+      doIt: "At dinner, name one way God took care of you today.",
+      prayer: "Dear God, thank You for being my shepherd and giving me what I need. Amen."
+    },
+    "ps56-3": {
+      big: "When I'm scared, I can trust God.",
+      meaning: "Everyone feels afraid sometimes, even grown-ups and even King David! This verse doesn't say we will never be scared. It tells us what to do when we are: trust God, because He is with us and He is bigger than anything we fear.",
+      words: [["What time", "whenever, at the time when"], ["trust", "to believe someone will help and keep their promises"], ["thee", "an old way to say \"you\" (here it means God)"]],
+      talk: "What is something that makes you feel afraid? What could you say to God when that happens?",
+      quiz: { q: "What can we do when we feel afraid?", options: ["Hide forever", "Trust God", "Pretend we're not scared"], answer: 1 },
+      doIt: "Next time you feel scared, say this verse out loud or in your head.",
+      prayer: "Dear God, when I am afraid, help me remember to trust You. Amen."
+    },
+    "eph6-1": {
+      big: "God wants me to obey my parents.",
+      meaning: "God gave you parents (or grown-ups who care for you) to love you, teach you, and keep you safe. When you listen and obey them, you are also obeying God. It is the right thing to do!",
+      words: [["obey", "to listen and do what you are told"], ["in the Lord", "as a way of following God"]],
+      talk: "Why do you think God wants kids to obey their parents? Is it easy or hard for you?",
+      quiz: { q: "Why should children obey their parents?", options: ["Because it is right", "Only to get candy", "Only when they feel like it"], answer: 0 },
+      doIt: "This week, try to obey the first time you're asked, with a happy heart.",
+      prayer: "Dear God, thank You for my family. Help me listen and obey. Amen."
+    },
+    "ps118-24": {
+      big: "Every day is a gift from God.",
+      meaning: "God made today! Even ordinary days and hard days are gifts from Him. We can choose to be glad and thankful, because God is with us in every day He makes.",
+      words: [["rejoice", "to be very happy and celebrate"], ["hath made", "has made"]],
+      talk: "What is something good that happened today? How can you be glad even on a hard day?",
+      quiz: { q: "Who made this day?", options: ["The LORD", "The sun", "The calendar"], answer: 0 },
+      doIt: "Each morning this week, say this verse when you wake up.",
+      prayer: "Dear God, thank You for today. Help me be glad in it. Amen."
+    },
+    "ps119-105": {
+      big: "God's Word shows me the way.",
+      meaning: "Imagine walking outside in the dark. A flashlight helps you see where to step so you don't trip. The Bible is like that! God's Word helps us know the right way to go and what choices to make.",
+      words: [["Thy word", "Your word, meaning God's Word, the Bible"], ["lamp", "a light, like a flashlight"], ["path", "the way you walk"]],
+      talk: "When is a flashlight helpful? How can the Bible help you make good choices?",
+      quiz: { q: "What is God's Word like in this verse?", options: ["A wall", "A lamp", "A map of the stars"], answer: 1 },
+      doIt: "Read a Bible story with your family this week and talk about what it teaches.",
+      prayer: "Dear God, thank You for the Bible. Help it light up my way. Amen."
+    },
+    "php4-13": {
+      big: "Jesus gives me strength.",
+      meaning: "Paul wrote this while he was in prison. He learned that whether life was easy or hard, Jesus gave him the strength to handle it. This doesn't mean we can fly like superheroes. It means Jesus helps us do what God asks us to do, even when it is hard.",
+      words: [["Christ", "another name for Jesus, meaning God's chosen King"], ["strengtheneth", "makes strong"]],
+      talk: "What is something hard for you right now? How can you ask Jesus for help?",
+      quiz: { q: "Who gives us strength?", options: ["Only ourselves", "Christ", "Our toys"], answer: 1 },
+      doIt: "When something feels hard this week, stop and ask Jesus to help you.",
+      prayer: "Dear Jesus, when things are hard, please give me Your strength. Amen."
+    },
+    "1pe5-7": {
+      big: "I can give my worries to God.",
+      meaning: "To \"cast\" means to throw. Peter tells us to throw all our worries onto God, like handing Him a heavy backpack. We can do that because God really cares about us!",
+      words: [["casting", "throwing, like casting a fishing net"], ["care", "worries and troubles"], ["careth", "cares"]],
+      talk: "What worries do you have? What would it look like to hand them to God?",
+      quiz: { q: "What should we do with our worries?", options: ["Keep them secret", "Give them to God", "Worry more"], answer: 1 },
+      doIt: "Draw or write a worry on paper. Pray about it, then fold it up to show you gave it to God.",
+      prayer: "Dear God, here are my worries. Thank You for caring about me. Amen."
+    },
+    "pr3-5": {
+      big: "Trust God with all my heart.",
+      meaning: "Sometimes we think we know best. But God knows everything and sees what we can't. This verse teaches us to trust God completely, not just a little bit, even when we don't understand everything.",
+      words: [["thine", "your"], ["lean not", "don't depend on"], ["understanding", "what you know or think"]],
+      talk: "What does it mean to trust someone with ALL your heart? When is it hard to trust God?",
+      quiz: { q: "How much of our heart should trust God?", options: ["A little", "Half", "All of it"], answer: 2 },
+      doIt: "When you have a choice to make this week, ask God to help you choose.",
+      prayer: "Dear God, I want to trust You with all my heart. Amen."
+    },
+    "eph4-32": {
+      big: "Be kind and forgive, like God forgave me.",
+      meaning: "God forgave us through Jesus, even though we didn't deserve it. Because He was so kind to us, we should be kind to each other and forgive people who hurt us.",
+      words: [["tenderhearted", "gentle, caring about how others feel"], ["forgiving", "letting go of being angry at someone who hurt you"], ["for Christ's sake", "because of what Jesus did"]],
+      talk: "Is it easy or hard to forgive someone? Why does God want us to forgive?",
+      quiz: { q: "Why should we forgive others?", options: ["Because God forgave us", "So we get a prize", "We don't need to"], answer: 0 },
+      doIt: "Do one kind thing for someone every day this week. If someone hurts you, choose to forgive.",
+      prayer: "Dear God, thank You for forgiving me. Help me be kind and forgive others. Amen."
+    },
+    "jn14-6": {
+      big: "Jesus is the way to God.",
+      meaning: "Jesus said this to His friends before He went back to heaven. He wanted them to know that He is the way to God the Father. Jesus always tells the truth, and He gives us life that lasts forever.",
+      words: [["saith", "says"], ["cometh", "comes"], ["the Father", "God"]],
+      talk: "Jesus said He is the way, the truth, and the life. Which of those three words do you like most, and why?",
+      quiz: { q: "Jesus said He is the way, the truth, and the ___.", options: ["light", "life", "love"], answer: 1 },
+      doIt: "Tell someone in your family what this verse means in your own words.",
+      prayer: "Dear Jesus, thank You for being the way to God. Help me follow You. Amen."
+    },
+    "jn3-16": {
+      big: "God loves the world so much He gave Jesus.",
+      meaning: "This may be the most famous verse in the Bible! God loves every person in the world so much that He sent His Son, Jesus. Everyone who believes in Jesus is given life with God that never ends.",
+      words: [["begotten Son", "God's one and only Son, Jesus"], ["whosoever", "anyone at all"], ["believeth", "believes, trusts"], ["everlasting", "lasting forever"]],
+      talk: "How much does God love the world? What was the biggest gift God ever gave?",
+      quiz: { q: "What did God give because He loved the world?", options: ["His only Son", "A big rainbow", "Lots of money"], answer: 0 },
+      doIt: "Make a card that says \"God loves you!\" and give it to someone.",
+      prayer: "Dear God, thank You for loving the world and sending Jesus. Amen."
+    },
+    "jos1-9": {
+      big: "Be brave, because God is with me.",
+      meaning: "Joshua had a big job: leading God's people into a new land after Moses died. He might have felt scared! God told him to be strong and brave, not because Joshua was so strong, but because God would be with him everywhere he went. God is with you too.",
+      words: [["courage", "being brave even when you feel afraid"], ["dismayed", "upset and discouraged"], ["whithersoever thou goest", "wherever you go"]],
+      talk: "When do you need to be brave? How does knowing God is with you help?",
+      quiz: { q: "Why could Joshua be brave?", options: ["He was the biggest", "God was with him", "He had no fears"], answer: 1 },
+      doIt: "Before something new or scary this week (school, a doctor visit, bedtime), say \"God is with me!\"",
+      prayer: "Dear God, thank You for being with me wherever I go. Help me be brave. Amen."
+    }
+  };
+
+  function genericLesson(v) {
+    return {
+      big: "What is God saying to me?",
+      meaning: "Read " + v.ref + " slowly with a grown-up. Talk about what it says about God, and what it asks us to do.",
+      words: [],
+      talk: "What does this verse teach you about God? Is there something it asks you to do?",
+      quiz: null,
+      doIt: "Pick one way to live out this verse this week, and tell someone about it.",
+      prayer: "Dear God, help me remember " + v.ref + " and live it out. Amen."
+    };
+  }
+  function lessonFor(v) { return LESSONS[v.id] || genericLesson(v); }
+
   var MAX_STARS = 3;
   var STORE_KEY = "verseBuddies.v1";
 
@@ -398,7 +564,7 @@
     $("practice").classList.remove("hidden");
     $("practiceRef").textContent = current.ref;
     renderVerseStars();
-    setMode("read");
+    setMode("lesson");
     window.scrollTo(0, 0);
   }
 
@@ -426,7 +592,7 @@
     });
     var stage = $("stage");
     stage.innerHTML = "";
-    ({ read: renderRead, hide: renderHide, letters: renderLetters, build: renderBuild })[m](stage);
+    ({ lesson: renderLesson, read: renderRead, hide: renderHide, letters: renderLetters, build: renderBuild })[m](stage);
   }
 
   function listenButton() {
@@ -435,6 +601,80 @@
       if (!speak(current.text + ". " + current.ref)) b.textContent = "🔇 Not available";
     });
     return b;
+  }
+
+  function lessonStep(stage, title, body) {
+    var s = el("div", "step");
+    s.appendChild(el("h3", "", title));
+    if (typeof body === "string") s.appendChild(el("p", "", body));
+    else s.appendChild(body);
+    stage.appendChild(s);
+    return s;
+  }
+
+  function renderLesson(stage) {
+    var L = lessonFor(current);
+    stage.appendChild(el("p", "lesson-big", L.big));
+
+    var v = el("blockquote", "lesson-verse", current.text);
+    v.style.margin = "10px 0";
+    v.appendChild(el("cite", "", current.ref));
+    stage.appendChild(v);
+    var c0 = el("div", "controls");
+    c0.style.marginTop = "0";
+    c0.appendChild(listenButton());
+    stage.appendChild(c0);
+
+    lessonStep(stage, "💡 What does it mean?", L.meaning);
+
+    if (L.words.length) {
+      var ul = el("ul", "words-list");
+      L.words.forEach(function (pair) {
+        var li = el("li");
+        li.appendChild(el("b", "", pair[0]));
+        li.appendChild(document.createTextNode(": " + pair[1]));
+        ul.appendChild(li);
+      });
+      lessonStep(stage, "📝 Words to know", ul);
+    }
+
+    lessonStep(stage, "💬 Think and talk", L.talk);
+
+    if (L.quiz) {
+      var qBox = el("div");
+      qBox.appendChild(el("p", "", L.quiz.q));
+      var opts = el("div", "quiz-opts");
+      var msg = el("div", "quiz-msg");
+      msg.setAttribute("aria-live", "polite");
+      L.quiz.options.forEach(function (o, i) {
+        var b = el("button", "quiz-opt", o);
+        b.addEventListener("click", function () {
+          if (i === L.quiz.answer) {
+            Array.prototype.forEach.call(opts.children, function (x) { x.disabled = true; });
+            b.classList.add("right");
+            msg.textContent = "✅ That's right! Great listening!";
+          } else {
+            b.classList.add("nope");
+            b.disabled = true;
+            msg.textContent = "Not quite. Read the verse again and try another one!";
+          }
+        });
+        opts.appendChild(b);
+      });
+      qBox.appendChild(opts);
+      qBox.appendChild(msg);
+      lessonStep(stage, "❓ Check what you learned", qBox);
+    }
+
+    lessonStep(stage, "🙌 Live it this week", L.doIt);
+    var pr = lessonStep(stage, "🙏 Let's pray", L.prayer);
+    pr.querySelector("p").className = "prayer";
+
+    var c = el("div", "controls");
+    var next = el("button", "btn", "Start memorizing ➡");
+    next.addEventListener("click", function () { setMode("read"); window.scrollTo(0, 0); });
+    c.appendChild(next);
+    stage.appendChild(c);
   }
 
   function renderRead(stage) {
