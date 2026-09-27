@@ -165,6 +165,35 @@ ul.tips{margin:0;padding-left:1.1em;display:grid;gap:6px;max-width:68ch}
 .trk-ex{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
 .trk-ex:last-child{border-bottom:0}
 .chart svg{width:100%;height:auto;display:block}
+textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font:inherit;color:inherit;resize:vertical}
+.numin{width:100%;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.hgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:end}
+.trk-ex2{display:grid;gap:8px;padding:14px 0;border-bottom:1px solid var(--line)}
+.trk-ex2:first-child{padding-top:0}
+.trk-ex2:last-child{border-bottom:0;padding-bottom:0}
+.lset{display:grid;grid-template-columns:3.4em minmax(0,1fr) auto minmax(0,1fr) 38px;gap:8px;align-items:center}
+.lset input{width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);font-family:var(--mono);font-variant-numeric:tabular-nums}
+.lset .sn{font-family:var(--mono);font-size:.8rem;color:var(--muted);white-space:nowrap}
+.tick{width:38px;height:36px;border-radius:8px;border:1.5px solid var(--line);background:var(--bg);cursor:pointer;font-weight:700;color:var(--muted)}
+.tick[aria-pressed="true"]{background:var(--good);border-color:var(--good);color:#fff}
+.ptiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:680px){.ptiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.ptile{border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:grid;gap:2px;align-content:start}
+.ptile .v{font-family:var(--mono);font-size:1.35rem;font-variant-numeric:tabular-nums;line-height:1.25}
+.ptile .d{font-size:.8rem;color:var(--muted)}
+.ptile .d b{font-weight:600}
+.up{color:var(--good)} .down{color:var(--bad)}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;max-width:520px}
+.cal .h{text-align:center;font-family:var(--display);font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-size:.8rem}
+.cal .c{aspect-ratio:1/1;max-width:100%;border-radius:8px;background:var(--sunk);position:relative;display:grid;place-items:center;font-family:var(--mono);font-size:.8rem;color:var(--muted)}
+.cal .c.ok{background:color-mix(in srgb,var(--good) 40%,var(--surface));color:var(--ink)}
+.cal .c.under{background:color-mix(in srgb,var(--warn) 35%,var(--surface));color:var(--ink)}
+.cal .c.over{background:color-mix(in srgb,var(--bad) 35%,var(--surface));color:var(--ink)}
+.cal .c.future{opacity:.35}
+.cal .c.today{outline:2px solid var(--ink);outline-offset:-2px}
+.cal .c .dot{position:absolute;bottom:5px;left:50%;margin-left:-3px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.85rem;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 .empty{padding:14px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:.95rem}
 footer.fine{font-size:.85rem;color:var(--muted);max-width:75ch}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -178,6 +207,7 @@ footer.fine{font-size:.85rem;color:var(--muted);max-width:75ch}
       <button role="tab" id="tab-workouts" data-tab="workouts" aria-selected="false">Workouts</button>
       <button role="tab" id="tab-meals" data-tab="meals" aria-selected="false">Meals</button>
       <button role="tab" id="tab-track" data-tab="track" aria-selected="false">Track</button>
+      <button role="tab" id="tab-progress" data-tab="progress" aria-selected="false">Progress</button>
     </nav>
   </div>
 </header>
@@ -289,12 +319,28 @@ footer.fine{font-size:.85rem;color:var(--muted);max-width:75ch}
         <div class="card stack bigmeter" id="calMeter"></div>
         <div class="card stack" id="macroMeters"></div>
         <div class="card stack">
-          <h3>Weight</h3>
-          <div class="row">
-            <div class="field" style="flex:1"><label for="w-in" id="w-label">Today's weight</label><input id="w-in" type="number" step="0.1" inputmode="decimal" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg)"></div>
-            <button class="btn primary" type="button" id="w-save" style="align-self:end">Log</button>
+          <h3>Daily habits</h3>
+          <div id="waterMeter"></div>
+          <div class="row"><button class="btn" type="button" id="water-minus">&minus; 250 ml</button><button class="btn primary" type="button" id="water-plus">+ 250 ml glass</button></div>
+          <div class="hgrid">
+            <div class="field"><label for="h-steps">Steps</label><input class="numin" id="h-steps" type="number" min="0" step="100" inputmode="numeric"></div>
+            <div class="field"><label for="h-sleep">Sleep (h)</label><input class="numin" id="h-sleep" type="number" min="0" max="16" step="0.5" inputmode="decimal"></div>
+            <div class="field"><label for="h-cardio">Cardio (min)</label><input class="numin" id="h-cardio" type="number" min="0" step="5" inputmode="numeric"></div>
           </div>
+          <div class="stack" id="habitBars" style="gap:10px"></div>
+          <div class="field"><label>Energy (1 = drained, 5 = great)</label>
+            <div class="seg" id="energySeg"><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button><button type="button" data-v="3">3</button><button type="button" data-v="4">4</button><button type="button" data-v="5">5</button></div></div>
+          <div class="field"><label for="note-in">Notes (how training felt, cravings, aches)</label><textarea id="note-in" rows="2"></textarea></div>
+        </div>
+        <div class="card stack">
+          <h3>Body</h3>
+          <div class="pair">
+            <div class="field"><label for="w-in" id="w-label">Weight</label><input class="numin" id="w-in" type="number" step="0.1" inputmode="decimal"></div>
+            <div class="field"><label for="waist-in" id="waist-label">Waist</label><input class="numin" id="waist-in" type="number" step="0.5" inputmode="decimal"></div>
+          </div>
+          <button class="btn primary" type="button" id="w-save">Save measurements</button>
           <div class="chart" id="wChart"></div>
+          <div class="note" id="waistNote"></div>
         </div>
       </div>
       <div class="stack">
@@ -324,6 +370,32 @@ footer.fine{font-size:.85rem;color:var(--muted);max-width:75ch}
           <div id="trkSession"></div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- PROGRESS -->
+  <section class="panel" id="panel-progress" role="tabpanel" aria-labelledby="tab-progress" hidden>
+    <div class="card stack">
+      <div class="row" style="justify-content:space-between"><h2>Last 7 days</h2><span class="chip" id="streak"></span></div>
+      <div class="ptiles" id="progTiles"></div>
+      <p class="note" style="margin:0">Arrows compare with the 7 days before.</p>
+    </div>
+    <div class="card stack">
+      <h2>Last 4 weeks</h2>
+      <div class="legend"><span><i style="background:color-mix(in srgb,var(--good) 40%,var(--surface))"></i>Calories on target</span><span><i style="background:color-mix(in srgb,var(--warn) 35%,var(--surface))"></i>Under</span><span><i style="background:color-mix(in srgb,var(--bad) 35%,var(--surface))"></i>Over</span><span><i style="background:var(--sunk)"></i>No food logged</span><span><i style="background:var(--accent);border-radius:50%;width:8px;height:8px"></i>Workout done</span></div>
+      <div class="cal" id="progCal"></div>
+      <p class="note" style="margin:0">Tap a day to open it in Track.</p>
+    </div>
+    <div class="card stack">
+      <h2>Best lifts</h2>
+      <div class="scroll" id="progLifts"></div>
+    </div>
+    <div class="card stack">
+      <h2>Back up your data</h2>
+      <p class="note" style="margin:0">Copy everything you've tracked as text and keep it somewhere safe. Paste it back here to restore it on another device.</p>
+      <div class="row"><button class="btn" type="button" id="bk-copy">Copy backup</button><span class="note" id="bk-msg" role="status"></span></div>
+      <textarea id="bk-in" rows="3" placeholder="Paste a backup here to restore it"></textarea>
+      <div class="row"><button class="btn" type="button" id="bk-restore">Restore from backup</button></div>
     </div>
   </section>
 
@@ -412,6 +484,7 @@ const EX={
  pulldown:{n:"Lat pulldown",m:"Lats, biceps",c:["Grip just wider than shoulders, thighs locked in.","Lean back slightly and pull the bar to your upper chest.","Drive elbows down toward your back pockets.","Let the arms straighten fully at the top."],a:"Pulling the bar behind the neck."},
  pullup:{n:"Pull-up (band-assisted or negatives if needed)",m:"Lats, biceps, grip",c:["Hang from a bar, hands just wider than shoulders.","Pull your chest toward the bar, elbows down and back.","Lower all the way under control.","Can't do one? Jump to the top and lower for 5 seconds."],a:"Half reps; go to full hang each time."},
  lateral:{n:"Lateral raise",m:"Side shoulders",c:["Light dumbbells at your sides, slight elbow bend.","Raise out to the sides to shoulder height.","Lead with the elbows, pinkies slightly up.","Lower slowly."],a:"Swinging heavy weights with the whole body."},
+ snowangel:{n:"Prone reverse snow angel",m:"Rear shoulders, upper back",c:["Lie face down, arms by your sides, palms down.","Lift arms and chest slightly off the floor.","Sweep the arms in a wide arc overhead, then back to your hips.","Move slowly; one full sweep is one rep."],a:"Cranking the neck up to look forward."},
  ytw:{n:"Prone Y-T-W raises",m:"Upper back, rear shoulders",c:["Lie face down, arms overhead in a Y, thumbs up.","Lift the arms, hold 2 seconds, lower.","Repeat with arms in a T, then a W.","One Y-T-W sequence is one rep."],a:"Shrugging up toward the ears."},
  facepull:{n:"Face pull",m:"Rear shoulders, upper back",c:["Rope at face height.","Pull toward your forehead, splitting the rope apart.","Finish with hands beside ears, elbows high."],a:"Using so much weight that you lean back."},
  reardelt:{n:"Dumbbell rear-delt fly",m:"Rear shoulders",c:["Hinge forward, back flat, light dumbbells hanging.","Raise arms out wide with soft elbows.","Squeeze shoulder blades, lower slowly."],a:"Turning it into a row by bending the elbows."},
@@ -429,11 +502,11 @@ const EX={
 // slot -> [gym, home, bw]
 const MAP={
  squat:["backsquat","goblet","bwsquat"], squat2:["legpress","bss","bss"],
- hinge:["rdl","dbrdl","slrdl"], hinge2:["deadlift","slrdl","glutebridge"],
+ hinge:["rdl","dbrdl","slrdl"], hinge2:["deadlift","slrdl","slrdl"],
  lunge:["walklunge","revlunge","revlunge"], glute:["hipthrust","dbthrust","glutebridge"], calf:["calf","calf","calf"],
  hpush:["bench","dbbench","pushup"], hpush2:["incline","incline","declinepu"], vpush:["ohp","dbpress","pikepu"],
  hpull:["cablerow","dbrow","invrow"], vpull:["pulldown","pullup","pullup"],
- lateral:["lateral","lateral","ytw"], rear:["facepull","reardelt","ytw"],
+ lateral:["lateral","lateral","ytw"], rear:["facepull","reardelt","snowangel"],
  biceps:["curl","curl","chinup"], triceps:["pushdown","ohext","dip"],
  core:["plank","plank","plank"], core2:["kneeraise","deadbug","deadbug"], carry:["carry","carry","bearcrawl"]
 };
@@ -460,13 +533,13 @@ const SPLITS={
 };
 
 /* ---------- state ---------- */
-const DEFAULT={v:1,profile:{example:true,units:"metric",sex:"m",age:30,cm:178,kg:80,goal:"lose",activity:1.3,days:4,level:"beginner",equip:"gym",diet:"omni",meals:4},seed:1,logs:{},weights:{}};
+const DEFAULT={v:1,profile:{example:true,units:"metric",sex:"m",age:30,cm:178,kg:80,goal:"lose",activity:1.3,days:4,level:"beginner",equip:"gym",diet:"omni",meals:4},seed:1,logs:{},weights:{},waist:{}};
 const LKEY="plate-and-plan-v1";
 let state=clone(DEFAULT);
 function clone(o){return JSON.parse(JSON.stringify(o))}
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
-function mergeState(s){if(!s||typeof s!=="object")return;const d=clone(DEFAULT);state={...d,...s,profile:{...d.profile,...(s.profile||{})},logs:s.logs||{},weights:s.weights||{}}}
+function mergeState(s){if(!s||typeof s!=="object")return;const d=clone(DEFAULT);state={...d,...s,profile:{...d.profile,...(s.profile||{})},logs:s.logs||{},weights:s.weights||{},waist:s.waist||{}}}
 try{const raw=lsGet(LKEY);if(raw)mergeState(JSON.parse(raw))}catch(e){}
 
 let cloudRef=null,cloudTimer=null;
@@ -552,6 +625,7 @@ function prescription(slot,exKey){
   if(TIMED[exKey])return "3 × "+TIMED[exKey];
   if(exKey==="kneeraise")return "3 × 10–15";
   if(exKey==="ytw")return "3 × 6–8";
+  if(exKey==="snowangel")return "3 × 8–10";
   const comp=COMPOUND.has(slot);
   let sets,reps;
   if(p.goal==="gain"){sets=comp?(beg?3:4):3;reps=comp?"6–10":"10–15"}
@@ -630,10 +704,21 @@ function renderMeals(){
 
 /* ---------- render: track ---------- */
 let trackKey=dkey(new Date());
-function dayLog(k,create){if(!state.logs[k]){if(!create)return{foods:[],sets:{}};state.logs[k]={foods:[],sets:{}}}const l=state.logs[k];l.foods=l.foods||[];l.sets=l.sets||{};return l}
-function meter(label,val,target,color,unit){
-  const pct=Math.min(100,val/target*100);
-  return `<div class="meter"><div class="top"><span><span class="swatch" style="background:${color}"></span>${label}</span><span class="num">${r0(val)} / ${r0(target)} ${unit}</span></div><div class="bar"><span style="width:${pct}%;background:${color}"></span></div></div>`;
+function dayLog(k,create){let l=state.logs[k];if(!l){l={};if(create)state.logs[k]=l}l.foods=l.foods||[];l.lifts=l.lifts||{};return l}
+const BW=new Set(["pushup","pullup","chinup","invrow","pikepu","declinepu","plank","deadbug","bearcrawl","bwsquat","dip","ytw","snowangel","glutebridge","kneeraise"]);
+const shortDate=k=>fromKey(k).toLocaleDateString(undefined,{month:"short",day:"numeric"});
+const inUnit=kg=>+showW(kg).toFixed(1);
+function doneSets(l){return Object.values((l&&l.lifts)||{}).reduce((a,arr)=>a+arr.filter(x=>x&&x.d).length,0)}
+function lastLift(exKey,beforeKey){
+  const ks=Object.keys(state.logs).filter(k=>k<beforeKey).sort().reverse();
+  for(const k of ks){const s=((state.logs[k]||{}).lifts||{})[exKey];if(s&&s.some(x=>x&&x.d))return{k,sets:s.filter(x=>x&&x.d)}}
+  return null;
+}
+function setTxt(x,exKey){const w=x.w?inUnit(x.w)+" "+wUnit():"";const r=x.r?x.r+(TIMED[exKey]?(exKey==="plank"?" s":exKey==="deadbug"?"":" m"):""):"";return w&&r?w+" × "+r:(w||r||"done")}
+function stepTarget(){return state.profile.goal==="lose"?9000:7500}
+function meter(label,val,target,color,unit,dec){
+  const pct=Math.min(100,val/target*100),f=x=>dec?x.toFixed(dec):fmt(x);
+  return `<div class="meter"><div class="top"><span><span class="swatch" style="background:${color}"></span>${label}</span><span class="num">${f(val)} / ${f(target)} ${unit}</span></div><div class="bar"><span style="width:${pct}%;background:${color}"></span></div></div>`;
 }
 function renderTrack(){
   const T=targets(),d=fromKey(trackKey),isToday=trackKey===dkey(new Date());
@@ -660,14 +745,29 @@ function renderTrack(){
   else{
     const S=SESS[sk],ei=equipIdx();$("trkSessionTitle").textContent=S.n;
     let done=0,total=0;
-    const rows=S.s.map((slot,si)=>{const k=MAP[slot][ei],rx=prescription(slot,k),n=parseInt(rx,10)||3;total+=n;const got=log.sets[si]||0;done+=Math.min(got,n);
-      return `<div class="trk-ex"><div><div style="font-weight:600">${esc(EX[k].n)}</div><div class="note num">${rx}</div></div><div class="sets">${Array.from({length:n},(_,j)=>`<button class="set" type="button" data-set="${si}:${j+1}" aria-pressed="${j<got}" aria-label="Set ${j+1}">${j+1}</button>`).join("")}</div></div>`}).join("");
+    const rows=S.s.map(slot=>{const k=MAP[slot][ei],rx=prescription(slot,k),n=parseInt(rx,10)||3;total+=n;
+      const sets=log.lifts[k]||[],last=lastLift(k,trackKey),timed=!!TIMED[k];
+      let h=`<div class="trk-ex2"><div class="row" style="justify-content:space-between;align-items:baseline"><span style="font-weight:600">${esc(EX[k].n)}</span><span class="note num">${rx}</span></div>`;
+      h+=`<div class="note">${last?"Last time ("+shortDate(last.k)+"): "+last.sets.map(x=>setTxt(x,k)).join(", ")+". Beat it by a rep or a little weight.":"First time: choose a load you can lift for the top of the rep range with clean form."}</div>`;
+      for(let j=0;j<n;j++){const x=sets[j]||{};if(x.d)done++;
+        h+=`<div class="lset"><span class="sn">Set ${j+1}</span><input type="number" inputmode="decimal" step="0.5" min="0" placeholder="${BW.has(k)?"BW":wUnit()}" value="${x.w?inUnit(x.w):""}" data-lift="${k}:${j}:w" aria-label="${esc(EX[k].n)} set ${j+1} weight in ${wUnit()}"><span class="muted">×</span><input type="number" inputmode="numeric" min="0" placeholder="${timed?(k==="plank"?"sec":k==="deadbug"?"reps":"metres"):"reps"}" value="${x.r||""}" data-lift="${k}:${j}:r" aria-label="${esc(EX[k].n)} set ${j+1} ${timed?"amount":"reps"}"><button class="tick" type="button" data-tick="${k}:${j}" aria-pressed="${!!x.d}" aria-label="Mark ${esc(EX[k].n)} set ${j+1} done">&#10003;</button></div>`}
+      return h+"</div>"}).join("");
     $("trkSessionChip").textContent=`${done}/${total} sets`;$("trkSessionChip").className="chip"+(done===total?" on":"");
     $("trkSession").innerHTML=rows;
   }
-  // weight
-  $("w-label").textContent=(isToday?"Today's weight":"Weight on this day")+" ("+wUnit()+")";
+  // habits
+  $("waterMeter").innerHTML=meter("Water",(log.water||0)/1000,T.water,"var(--accent)","L",1);
+  $("h-steps").value=log.steps||"";$("h-sleep").value=log.sleep||"";$("h-cardio").value=log.cardio||"";$("note-in").value=log.note||"";
+  $("habitBars").innerHTML=meter("Steps",log.steps||0,stepTarget(),"var(--good)","")+meter("Sleep",log.sleep||0,8,"var(--fat)","h",1)+(state.profile.goal==="lose"?meter("Cardio",log.cardio||0,10,"var(--carb)","min"):"");
+  document.querySelectorAll("#energySeg button").forEach(b=>b.setAttribute("aria-pressed",String(Number(b.dataset.v)===log.energy)));
+  // body
+  const imp=state.profile.units==="imperial";
+  $("w-label").textContent="Weight ("+wUnit()+")";$("waist-label").textContent="Waist ("+(imp?"in":"cm")+")";
   const wk=state.weights[trackKey];$("w-in").value=wk?showW(wk).toFixed(1):"";
+  const ws=state.waist[trackKey];$("waist-in").value=ws?(imp?ws/2.54:ws).toFixed(1):"";
+  const wpts=Object.entries(state.waist).sort((a,b)=>a[0]<b[0]?-1:1);
+  if(wpts.length){const cv=v=>imp?v/2.54:v,u=imp?"in":"cm",lastW=cv(wpts[wpts.length-1][1]),dW=lastW-cv(wpts[0][1]);$("waistNote").textContent=`Waist: ${lastW.toFixed(1)} ${u} on ${shortDate(wpts[wpts.length-1][0])}`+(wpts.length>1?` (${dW>0?"+":""}${dW.toFixed(1)} ${u} since ${shortDate(wpts[0][0])})`:"")+". Measure at the belly button, relaxed, once a week.";}
+  else $("waistNote").textContent="Measure your waist at the belly button once a week. It shows fat loss even when the scale stalls.";
   renderChart();
 }
 function renderChart(){
@@ -695,10 +795,64 @@ function renderChart(){
 }
 
 /* ---------- wiring ---------- */
-function renderAll(){renderPlan();renderWorkouts();renderMeals();renderTrack()}
+function renderProgress(){
+  const T=targets(),now=new Date(),todayK=dkey(now);
+  const back=n=>Array.from({length:n},(_,i)=>{const d=new Date(now);d.setDate(d.getDate()-i);return dkey(d)});
+  const k14=back(14),a7=k14.slice(0,7),b7=k14.slice(7);
+  const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+  function agg(ks){
+    const o={food:0,kcal:[],prot:[],hit:0,workouts:0,planned:0,sets:0,steps:[],sleep:[],water:[],cardio:0,energy:[],wt:[]};
+    ks.forEach(k=>{const l=state.logs[k]||{},f=l.foods||[];
+      if(f.length){o.food++;const kc=f.reduce((a,x)=>a+x.k,0);o.kcal.push(kc);o.prot.push(f.reduce((a,x)=>a+x.p,0));if(kc>=T.kcal*.9&&kc<=T.kcal*1.05)o.hit++}
+      const ds=doneSets(l);o.sets+=ds;if(ds)o.workouts++;if(sessionForDay(wd(fromKey(k))))o.planned++;
+      if(l.steps)o.steps.push(l.steps);if(l.sleep)o.sleep.push(l.sleep);if(l.water)o.water.push(l.water/1000);if(l.energy)o.energy.push(l.energy);o.cardio+=l.cardio||0;
+      if(state.weights[k])o.wt.push(showW(state.weights[k]))});
+    ["kcal","prot","steps","sleep","water","energy","wt"].forEach(x=>o[x]=avg(o[x]));
+    return o;
+  }
+  const A=agg(a7),B=agg(b7);
+  const delta=(a,b,dec,goodUp)=>{if(a==null||b==null)return "";const d=a-b;if(Math.abs(d)<Math.pow(10,-dec)/2)return " · same";const good=goodUp==null?null:(d>0)===goodUp;return ` · <b class="${good==null?"":good?"up":"down"}">${d>0?"▲":"▼"} ${Math.abs(d).toFixed(dec)}</b>`};
+  const v=(x,dec,u)=>x==null?"—":(dec?x.toFixed(dec):fmt(x))+(u?" <small>"+u+"</small>":"");
+  const g=state.profile.goal;
+  const tiles=[
+    ["Workouts",`${A.workouts} / ${A.planned}`,`${A.sets} sets done`+delta(A.sets,B.sets,0,true)],
+    ["Days on calorie target",`${A.hit} / 7`,`${A.food} days logged`],
+    ["Avg calories",v(A.kcal,0,"kcal"),`target ${fmt(T.kcal)}`+delta(A.kcal,B.kcal,0,null)],
+    ["Avg protein",v(A.prot,0,"g"),`target ${T.p} g`+delta(A.prot,B.prot,0,true)],
+    ["Weight (avg)",v(A.wt,1,wUnit()),delta(A.wt,B.wt,1,g==="gain"?true:g==="lose"?false:null).replace(/^ · /,"")||"log 3+ times a week"],
+    ["Avg steps",v(A.steps,0),`target ${fmt(stepTarget())}`+delta(A.steps,B.steps,0,true)],
+    ["Avg sleep",v(A.sleep,1,"h"),"aim for 7–9 h"+delta(A.sleep,B.sleep,1,true)],
+    ["Avg water",v(A.water,1,"L"),`target ${T.water.toFixed(1)} L`+delta(A.water,B.water,1,true)],
+    ["Cardio",v(A.cardio,0,"min"),"this week"+delta(A.cardio,B.cardio,0,true)],
+    ["Avg energy",v(A.energy,1,"/ 5"),delta(A.energy,B.energy,1,true).replace(/^ · /,"")||"rate it daily in Track"]
+  ];
+  $("progTiles").innerHTML=tiles.map(t=>`<div class="ptile"><span class="label">${t[0]}</span><span class="v">${t[1]}</span><span class="d">${t[2]}</span></div>`).join("");
+  // streak
+  const active=k=>{const l=state.logs[k];return !!l&&((l.foods||[]).length>0||doneSets(l)>0||l.steps||l.water||l.sleep||state.weights[k])};
+  let st=0;const d0=new Date(now);if(!active(todayK))d0.setDate(d0.getDate()-1);
+  while(active(dkey(d0))){st++;d0.setDate(d0.getDate()-1)}
+  $("streak").textContent=st?`${st}-day tracking streak`:"No streak yet";$("streak").className="chip"+(st?" on":"");
+  // calendar: 4 weeks Mon-Sun ending this week
+  const start=new Date(now);start.setDate(start.getDate()-wd(now)-21);
+  let cal=DAYS.map(d=>`<div class="h">${d[0]}</div>`).join("");
+  for(let i=0;i<28;i++){const d=new Date(start);d.setDate(start.getDate()+i);const k=dkey(d),l=state.logs[k]||{},f=l.foods||[];
+    let cls="";if(k>todayK)cls="future";else if(f.length){const kc=f.reduce((a,x)=>a+x.k,0),r=kc/T.kcal;cls=r>1.05?"over":r>=.9?"ok":"under"}
+    const lbl=`${d.toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"})}${f.length?", "+fmt(f.reduce((a,x)=>a+x.k,0))+" kcal":""}${doneSets(l)?", workout done":""}`;
+    cal+=`<button type="button" class="c ${cls} ${k===todayK?"today":""}" data-cal="${k}" ${k>todayK?"disabled":""} aria-label="${lbl}" title="${lbl}" style="border:0;cursor:${k>todayK?"default":"pointer"}">${d.getDate()}${doneSets(l)?'<span class="dot"></span>':""}</button>`}
+  $("progCal").innerHTML=cal;
+  // best lifts
+  const best={};
+  Object.keys(state.logs).sort().forEach(k=>{Object.entries((state.logs[k]||{}).lifts||{}).forEach(([ex,arr])=>{if(!EX[ex])return;
+    const done=arr.filter(x=>x&&x.d);if(!done.length)return;const b=best[ex]=best[ex]||{n:0,last:k,top:null,score:-1};b.n++;b.last=k;
+    done.forEach(x=>{const w=x.w||0,r=x.r||0,sc=w?w*(1+r/30):r;if(sc>b.score){b.score=sc;b.top={...x,k}}})})});
+  const rows=Object.entries(best).sort((a,b)=>b[1].n-a[1].n);
+  $("progLifts").innerHTML=rows.length?`<table class="log"><thead><tr><th>Exercise</th><th class="n">Best set</th><th class="n">Est. 1-rep max</th><th class="n">Sessions</th><th class="n">Last</th></tr></thead><tbody>${rows.map(([ex,b])=>`<tr><td>${esc(EX[ex].n)}</td><td class="n">${setTxt(b.top,ex)}</td><td class="n">${b.top.w&&b.top.r&&!TIMED[ex]?inUnit(b.score)+" "+wUnit():"—"}</td><td class="n">${b.n}</td><td class="n">${shortDate(b.last)}</td></tr>`).join("")}</tbody></table>`:`<div class="empty">Log weight and reps for your sets in Track. Your best set and estimated 1-rep max for each exercise will show up here.</div>`;
+}
+function renderAll(){renderPlan();renderWorkouts();renderMeals();renderTrack();renderProgress()}
 function setTab(t,push){
   document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===t)));
-  ["plan","workouts","meals","track"].forEach(x=>{$("panel-"+x).hidden=x!==t});
+  ["plan","workouts","meals","track","progress"].forEach(x=>{$("panel-"+x).hidden=x!==t});
+  if(t==="progress")renderProgress();
   lsSet(LKEY+"-tab",t);
   if(push)try{history.replaceState(null,"","#"+t)}catch(e){}
 }
@@ -741,15 +895,38 @@ $("c-add").addEventListener("click",()=>{
   dayLog(trackKey,true).foods.push({n,k:k||p*4+c*4+f*9,p,c,f});save();["c-name","c-k","c-p","c-c","c-f"].forEach(i=>$(i).value="");renderTrack();
 });
 $("foodLog").addEventListener("click",e=>{const b=e.target.closest("[data-del]");if(!b)return;dayLog(trackKey,true).foods.splice(Number(b.dataset.del),1);save();renderTrack()});
-$("trkSession").addEventListener("click",e=>{const b=e.target.closest("[data-set]");if(!b)return;const [si,n]=b.dataset.set.split(":").map(Number);const l=dayLog(trackKey,true);l.sets[si]=(l.sets[si]||0)===n?n-1:n;save();renderTrack()});
-$("w-save").addEventListener("click",()=>{const v=parseFloat($("w-in").value);if(!(v>0)){$("w-in").focus();return}const kg=state.profile.units==="imperial"?lbToKg(v):v;if(kg<30||kg>300)return;state.weights[trackKey]=kg;if(trackKey===dkey(new Date()))state.profile.kg=kg;save();renderAll()});
+function liftSet(k,j){const l=dayLog(trackKey,true),arr=l.lifts[k]=l.lifts[k]||[];for(let i=0;i<=j;i++)arr[i]=arr[i]||{};return arr[j]}
+$("trkSession").addEventListener("change",e=>{const t=e.target.closest("[data-lift]");if(!t)return;const [k,j,f]=t.dataset.lift.split(":");const x=liftSet(k,+j),v=parseFloat(t.value);
+  if(f==="w")x.w=v>0?(state.profile.units==="imperial"?lbToKg(v):v):0;else x.r=v>0?v:0;save()});
+$("trkSession").addEventListener("click",e=>{const b=e.target.closest("[data-tick]");if(!b)return;const [k,js]=b.dataset.tick.split(":"),j=+js;const x=liftSet(k,j);
+  x.d=!x.d;
+  if(x.d&&!x.w&&!x.r){const arr=dayLog(trackKey,true).lifts[k];const prev=j>0?arr[j-1]:null;const last=lastLift(k,trackKey);const src=(prev&&(prev.w||prev.r))?prev:(last?(last.sets[j]||last.sets[last.sets.length-1]):null);if(src){x.w=src.w||0;x.r=src.r||0}}
+  save();renderTrack()});
+$("water-plus").addEventListener("click",()=>{const l=dayLog(trackKey,true);l.water=(l.water||0)+250;save();renderTrack()});
+$("water-minus").addEventListener("click",()=>{const l=dayLog(trackKey,true);l.water=Math.max(0,(l.water||0)-250);save();renderTrack()});
+[["h-steps","steps"],["h-sleep","sleep"],["h-cardio","cardio"]].forEach(([id,f])=>$(id).addEventListener("change",()=>{const l=dayLog(trackKey,true),v=parseFloat($(id).value);if(v>0)l[f]=v;else delete l[f];save();renderTrack()}));
+$("note-in").addEventListener("change",()=>{const l=dayLog(trackKey,true),v=$("note-in").value.trim();if(v)l.note=v;else delete l.note;save()});
+$("energySeg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;const l=dayLog(trackKey,true),v=Number(b.dataset.v);l.energy=l.energy===v?undefined:v;if(!l.energy)delete l.energy;save();renderTrack()});
+$("progCal").addEventListener("click",e=>{const b=e.target.closest("[data-cal]");if(!b||b.disabled)return;trackKey=b.dataset.cal;renderTrack();setTab("track",true);window.scrollTo(0,0)});
+$("bk-copy").addEventListener("click",()=>{const txt=JSON.stringify(state);const done=()=>{$("bk-msg").textContent="Backup copied. Paste it into a note or email to yourself."};
+  const fallback=()=>{$("bk-in").value=txt;$("bk-in").select();$("bk-msg").textContent="Your backup is in the box below and selected. Copy it from there."};
+  try{navigator.clipboard.writeText(txt).then(done,fallback)}catch(err){fallback()}});
+let restoreArmed=false;
+$("bk-restore").addEventListener("click",()=>{let data;try{data=JSON.parse($("bk-in").value)}catch(err){data=null}
+  if(!data||typeof data!=="object"||!data.profile){$("bk-msg").textContent="That doesn't look like a Dragonwarrior backup. Paste the full text you copied.";restoreArmed=false;$("bk-restore").textContent="Restore from backup";return}
+  if(!restoreArmed){restoreArmed=true;$("bk-restore").textContent="Tap again to replace everything here";$("bk-msg").textContent="Restoring replaces all data on this page.";return}
+  restoreArmed=false;$("bk-restore").textContent="Restore from backup";mergeState(data);save();renderAll();$("bk-in").value="";$("bk-msg").textContent="Backup restored."});
+$("w-save").addEventListener("click",()=>{const imp=state.profile.units==="imperial",v=parseFloat($("w-in").value),wv=parseFloat($("waist-in").value);let any=false;
+  if(v>0){const kg=imp?lbToKg(v):v;if(kg>=30&&kg<=300){state.weights[trackKey]=kg;if(trackKey===dkey(new Date()))state.profile.kg=kg;any=true}}
+  if(wv>0){const cm=imp?wv*2.54:wv;if(cm>=40&&cm<=200){state.waist[trackKey]=cm;any=true}}
+  if(!any){$("w-in").focus();return}save();renderAll()});
 function shiftDay(n){const d=fromKey(trackKey);d.setDate(d.getDate()+n);const k=dkey(d);if(k>dkey(new Date()))return;trackKey=k;renderTrack()}
 $("prevDay").addEventListener("click",()=>shiftDay(-1));
 $("nextDay").addEventListener("click",()=>shiftDay(1));
 $("todayBtn").addEventListener("click",()=>{trackKey=dkey(new Date());renderTrack()});
 
 const hash=(location.hash||"").slice(1);
-setTab(["plan","workouts","meals","track"].includes(hash)?hash:(lsGet(LKEY+"-tab")||"plan"),false);
+setTab(["plan","workouts","meals","track","progress"].includes(hash)?hash:(lsGet(LKEY+"-tab")||"plan"),false);
 renderAll();
 initCloud();
 })();
