@@ -114,6 +114,24 @@
 
   .tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 14px; }
 
+  .week-card { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); }
+  .week-label { font-weight: 800; font-size: 15px; opacity: .9; }
+  .week-ref { font-size: 26px; font-weight: 800; line-height: 1.2; }
+  .week-big { margin: 2px 0 12px; }
+  .progress-wrap { margin: 4px 0 8px; }
+  .progress-label { font-weight: 800; margin-bottom: 4px; }
+  .progress-bar { height: 14px; border-radius: 999px; background: var(--chip); overflow: hidden; }
+  .progress-fill { height: 100%; width: 0; background: var(--mint); border-radius: 999px; transition: width .3s; }
+  .topic-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+  @media (max-width: 600px) {
+    .topic-filters { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
+    .filter { white-space: nowrap; flex: none; }
+  }
+  .filter { border: 2px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 12px; font-weight: 700; font-size: 15px; }
+  .filter[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); }
+  .topic-title { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 18px 0 8px; font-size: 20px; }
+  .topic-count { color: var(--muted); font-size: 15px; font-weight: 700; white-space: nowrap; }
+
   .lesson-big { font-size: 26px; font-weight: 800; color: var(--primary); margin: 0 0 6px; line-height: 1.2; }
   .lesson-verse {
     background: var(--chip); border-radius: 16px; padding: 12px 14px; font-size: 20px; font-weight: 600;
@@ -221,13 +239,21 @@
   <!-- Home: pick a verse -->
   <main id="home">
     <div class="card">
-      <strong>How it works:</strong> pick a verse and start with the 📚 <em>Lesson</em> to learn what it means.
+      <strong>How it works:</strong> 52 verses, one for each week of the year. Pick a verse and start with the 📚 <em>Lesson</em> to learn what it means.
       Then practice it with the games. Finish <em>Build It</em> to earn a star.
       Get 3 stars and the verse is memorized! 🏆
       <div class="grownup" style="margin-top:6px">Grown-ups: each lesson has a talk question, a quiz, a "live it" challenge and a prayer to do together.</div>
     </div>
+    <div class="card week-card" id="weekCard"></div>
+
+    <div class="progress-wrap">
+      <div class="progress-label" id="progressLabel"></div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+
     <h2 class="section-title">Pick a verse</h2>
-    <div class="verse-grid" id="verseGrid"></div>
+    <div class="topic-filters" id="topicFilters" role="group" aria-label="Filter by topic"></div>
+    <div id="verseGrid"></div>
     <div class="row">
       <button class="btn sun" id="addBtn">➕ Add my own verse</button>
     </div>
@@ -272,21 +298,78 @@
 (function () {
   "use strict";
 
+  var TOPICS = [
+    { id: "creation", name: "God Made Everything", emoji: "🌍" },
+    { id: "jesus",    name: "Who Is Jesus?", emoji: "✝️" },
+    { id: "love",     name: "God's Love & Saving Grace", emoji: "❤️" },
+    { id: "trust",    name: "Trust & Courage", emoji: "🦁" },
+    { id: "others",   name: "Loving Others", emoji: "🤝" },
+    { id: "obey",     name: "Living for God", emoji: "🌟" },
+    { id: "joy",      name: "Joy, Thanks & Prayer", emoji: "🎉" },
+    { id: "word",     name: "God's Word", emoji: "📖" }
+  ];
+
+  // 52 verses (one per week for a year), grouped by topic. KJV text.
   var BUILT_IN = [
-    { id: "gen1-1",  emoji: "🌍", ref: "Genesis 1:1", text: "In the beginning God created the heaven and the earth." },
-    { id: "1jn4-19", emoji: "❤️", ref: "1 John 4:19", text: "We love him, because he first loved us." },
-    { id: "ps23-1",  emoji: "🐑", ref: "Psalm 23:1", text: "The LORD is my shepherd; I shall not want." },
-    { id: "ps56-3",  emoji: "🛡️", ref: "Psalm 56:3", text: "What time I am afraid, I will trust in thee." },
-    { id: "eph6-1",  emoji: "🏠", ref: "Ephesians 6:1", text: "Children, obey your parents in the Lord: for this is right." },
-    { id: "ps118-24",emoji: "☀️", ref: "Psalm 118:24", text: "This is the day which the LORD hath made; we will rejoice and be glad in it." },
-    { id: "ps119-105",emoji: "🔦", ref: "Psalm 119:105", text: "Thy word is a lamp unto my feet, and a light unto my path." },
-    { id: "php4-13", emoji: "💪", ref: "Philippians 4:13", text: "I can do all things through Christ which strengtheneth me." },
-    { id: "1pe5-7",  emoji: "🤗", ref: "1 Peter 5:7", text: "Casting all your care upon him; for he careth for you." },
-    { id: "pr3-5",   emoji: "🙏", ref: "Proverbs 3:5", text: "Trust in the LORD with all thine heart; and lean not unto thine own understanding." },
-    { id: "eph4-32", emoji: "🤝", ref: "Ephesians 4:32", text: "And be ye kind one to another, tenderhearted, forgiving one another, even as God for Christ's sake hath forgiven you." },
-    { id: "jn14-6",  emoji: "🛤️", ref: "John 14:6", text: "Jesus saith unto him, I am the way, the truth, and the life: no man cometh unto the Father, but by me." },
-    { id: "jn3-16",  emoji: "🎁", ref: "John 3:16", text: "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life." },
-    { id: "jos1-9",  emoji: "🦁", ref: "Joshua 1:9", text: "Have not I commanded thee? Be strong and of a good courage; be not afraid, neither be thou dismayed: for the LORD thy God is with thee whithersoever thou goest." }
+    { id: "gen1-1",    topic: "creation", emoji: "🌍", ref: "Genesis 1:1", text: "In the beginning God created the heaven and the earth." },
+    { id: "gen1-27",   topic: "creation", emoji: "👧", ref: "Genesis 1:27", text: "So God created man in his own image, in the image of God created he him; male and female created he them." },
+    { id: "ps139-14",  topic: "creation", emoji: "🧒", ref: "Psalm 139:14", text: "I will praise thee; for I am fearfully and wonderfully made: marvellous are thy works; and that my soul knoweth right well." },
+    { id: "ps150-6",   topic: "creation", emoji: "🎺", ref: "Psalm 150:6", text: "Let every thing that hath breath praise the LORD. Praise ye the LORD." },
+
+    { id: "jn1-1",     topic: "jesus", emoji: "✨", ref: "John 1:1", text: "In the beginning was the Word, and the Word was with God, and the Word was God." },
+    { id: "lk2-11",    topic: "jesus", emoji: "⭐", ref: "Luke 2:11", text: "For unto you is born this day in the city of David a Saviour, which is Christ the Lord." },
+    { id: "jn8-12",    topic: "jesus", emoji: "💡", ref: "John 8:12", text: "Then spake Jesus again unto them, saying, I am the light of the world: he that followeth me shall not walk in darkness, but shall have the light of life." },
+    { id: "jn10-11",   topic: "jesus", emoji: "🐑", ref: "John 10:11", text: "I am the good shepherd: the good shepherd giveth his life for the sheep." },
+    { id: "jn11-35",   topic: "jesus", emoji: "💧", ref: "John 11:35", text: "Jesus wept." },
+    { id: "jn14-6",    topic: "jesus", emoji: "🛤️", ref: "John 14:6", text: "Jesus saith unto him, I am the way, the truth, and the life: no man cometh unto the Father, but by me." },
+    { id: "heb13-8",   topic: "jesus", emoji: "⏳", ref: "Hebrews 13:8", text: "Jesus Christ the same yesterday, and to day, and for ever." },
+    { id: "mt19-14",   topic: "jesus", emoji: "👶", ref: "Matthew 19:14", text: "But Jesus said, Suffer little children, and forbid them not, to come unto me: for of such is the kingdom of heaven." },
+
+    { id: "jn3-16",    topic: "love", emoji: "🎁", ref: "John 3:16", text: "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life." },
+    { id: "1jn4-19",   topic: "love", emoji: "❤️", ref: "1 John 4:19", text: "We love him, because he first loved us." },
+    { id: "1jn4-8",    topic: "love", emoji: "💖", ref: "1 John 4:8", text: "He that loveth not knoweth not God; for God is love." },
+    { id: "rom3-23",   topic: "love", emoji: "🎯", ref: "Romans 3:23", text: "For all have sinned, and come short of the glory of God;" },
+    { id: "rom5-8",    topic: "love", emoji: "✝️", ref: "Romans 5:8", text: "But God commendeth his love toward us, in that, while we were yet sinners, Christ died for us." },
+    { id: "rom6-23",   topic: "love", emoji: "🎀", ref: "Romans 6:23", text: "For the wages of sin is death; but the gift of God is eternal life through Jesus Christ our Lord." },
+    { id: "eph2-8",    topic: "love", emoji: "🎁", ref: "Ephesians 2:8", text: "For by grace are ye saved through faith; and that not of yourselves: it is the gift of God:" },
+    { id: "1jn1-9",    topic: "love", emoji: "🧼", ref: "1 John 1:9", text: "If we confess our sins, he is faithful and just to forgive us our sins, and to cleanse us from all unrighteousness." },
+    { id: "2co5-17",   topic: "love", emoji: "🦋", ref: "2 Corinthians 5:17", text: "Therefore if any man be in Christ, he is a new creature: old things are passed away; behold, all things are become new." },
+    { id: "lam3-22",   topic: "love", emoji: "🌅", ref: "Lamentations 3:22-23", text: "It is of the LORD's mercies that we are not consumed, because his compassions fail not. They are new every morning: great is thy faithfulness." },
+
+    { id: "ps23-1",    topic: "trust", emoji: "🐑", ref: "Psalm 23:1", text: "The LORD is my shepherd; I shall not want." },
+    { id: "ps56-3",    topic: "trust", emoji: "🛡️", ref: "Psalm 56:3", text: "What time I am afraid, I will trust in thee." },
+    { id: "ps46-1",    topic: "trust", emoji: "🏰", ref: "Psalm 46:1", text: "God is our refuge and strength, a very present help in trouble." },
+    { id: "pr3-5",     topic: "trust", emoji: "🙏", ref: "Proverbs 3:5", text: "Trust in the LORD with all thine heart; and lean not unto thine own understanding." },
+    { id: "jos1-9",    topic: "trust", emoji: "🦁", ref: "Joshua 1:9", text: "Have not I commanded thee? Be strong and of a good courage; be not afraid, neither be thou dismayed: for the LORD thy God is with thee whithersoever thou goest." },
+    { id: "isa41-10",  topic: "trust", emoji: "✋", ref: "Isaiah 41:10", text: "Fear thou not; for I am with thee: be not dismayed; for I am thy God: I will strengthen thee; yea, I will help thee; yea, I will uphold thee with the right hand of my righteousness." },
+    { id: "php4-13",   topic: "trust", emoji: "💪", ref: "Philippians 4:13", text: "I can do all things through Christ which strengtheneth me." },
+    { id: "1pe5-7",    topic: "trust", emoji: "🤗", ref: "1 Peter 5:7", text: "Casting all your care upon him; for he careth for you." },
+    { id: "lk1-37",    topic: "trust", emoji: "🌈", ref: "Luke 1:37", text: "For with God nothing shall be impossible." },
+    { id: "mt6-33",    topic: "trust", emoji: "👑", ref: "Matthew 6:33", text: "But seek ye first the kingdom of God, and his righteousness; and all these things shall be added unto you." },
+
+    { id: "eph4-32",   topic: "others", emoji: "🤝", ref: "Ephesians 4:32", text: "And be ye kind one to another, tenderhearted, forgiving one another, even as God for Christ's sake hath forgiven you." },
+    { id: "jn13-34",   topic: "others", emoji: "💞", ref: "John 13:34", text: "A new commandment I give unto you, That ye love one another; as I have loved you, that ye also love one another." },
+    { id: "lk6-31",    topic: "others", emoji: "🔁", ref: "Luke 6:31", text: "And as ye would that men should do to you, do ye also to them likewise." },
+    { id: "pr17-17",   topic: "others", emoji: "👫", ref: "Proverbs 17:17", text: "A friend loveth at all times, and a brother is born for adversity." },
+    { id: "pr15-1",    topic: "others", emoji: "🕊️", ref: "Proverbs 15:1", text: "A soft answer turneth away wrath: but grievous words stir up anger." },
+    { id: "gal5-22",   topic: "others", emoji: "🍎", ref: "Galatians 5:22-23", text: "But the fruit of the Spirit is love, joy, peace, longsuffering, gentleness, goodness, faith, Meekness, temperance: against such there is no law." },
+    { id: "mic6-8",    topic: "others", emoji: "⚖️", ref: "Micah 6:8", text: "He hath shewed thee, O man, what is good; and what doth the LORD require of thee, but to do justly, and to love mercy, and to walk humbly with thy God?" },
+
+    { id: "eph6-1",    topic: "obey", emoji: "🏠", ref: "Ephesians 6:1", text: "Children, obey your parents in the Lord: for this is right." },
+    { id: "ex20-12",   topic: "obey", emoji: "👨‍👩‍👧", ref: "Exodus 20:12", text: "Honour thy father and thy mother: that thy days may be long upon the land which the LORD thy God giveth thee." },
+    { id: "mt22-37",   topic: "obey", emoji: "💗", ref: "Matthew 22:37", text: "Jesus said unto him, Thou shalt love the Lord thy God with all thy heart, and with all thy soul, and with all thy mind." },
+    { id: "1ti4-12",   topic: "obey", emoji: "🌱", ref: "1 Timothy 4:12", text: "Let no man despise thy youth; but be thou an example of the believers, in word, in conversation, in charity, in spirit, in faith, in purity." },
+    { id: "mt5-16",    topic: "obey", emoji: "🕯️", ref: "Matthew 5:16", text: "Let your light so shine before men, that they may see your good works, and glorify your Father which is in heaven." },
+    { id: "1co10-31",  topic: "obey", emoji: "🍽️", ref: "1 Corinthians 10:31", text: "Whether therefore ye eat, or drink, or whatsoever ye do, do all to the glory of God." },
+
+    { id: "ps118-24",  topic: "joy", emoji: "☀️", ref: "Psalm 118:24", text: "This is the day which the LORD hath made; we will rejoice and be glad in it." },
+    { id: "ps136-1",   topic: "joy", emoji: "🙌", ref: "Psalm 136:1", text: "O give thanks unto the LORD; for he is good: for his mercy endureth for ever." },
+    { id: "php4-4",    topic: "joy", emoji: "😄", ref: "Philippians 4:4", text: "Rejoice in the Lord alway: and again I say, Rejoice." },
+    { id: "1th5-17",   topic: "joy", emoji: "🗣️", ref: "1 Thessalonians 5:17", text: "Pray without ceasing." },
+    { id: "1th5-18",   topic: "joy", emoji: "🦃", ref: "1 Thessalonians 5:18", text: "In every thing give thanks: for this is the will of God in Christ Jesus concerning you." },
+
+    { id: "ps119-105", topic: "word", emoji: "🔦", ref: "Psalm 119:105", text: "Thy word is a lamp unto my feet, and a light unto my path." },
+    { id: "ps119-11",  topic: "word", emoji: "💝", ref: "Psalm 119:11", text: "Thy word have I hid in mine heart, that I might not sin against thee." }
   ];
   // Teaching content for each built-in verse. Custom verses get a general lesson (see genericLesson).
   var LESSONS = {
@@ -415,6 +498,364 @@
       quiz: { q: "Why could Joshua be brave?", options: ["He was the biggest", "God was with him", "He had no fears"], answer: 1 },
       doIt: "Before something new or scary this week (school, a doctor visit, bedtime), say \"God is with me!\"",
       prayer: "Dear God, thank You for being with me wherever I go. Help me be brave. Amen."
+    },
+
+    // ---- God Made Everything ----
+    "gen1-27": {
+      big: "God made me in His image.",
+      meaning: "When God made people, He made them special, different from everything else. Being made \"in His image\" means we can love, think, create, and know God. Every person, boys and girls from every place, is precious to God.",
+      words: [["image", "a likeness, like a reflection in a mirror"], ["male and female", "boys and girls, men and women"]],
+      talk: "How are people different from animals? Why does it matter that everyone is made in God's image?",
+      quiz: { q: "In whose image did God make people?", options: ["The animals'", "His own", "The angels'"], answer: 1 },
+      doIt: "Treat everyone you meet this week like they are precious to God, because they are!",
+      prayer: "Dear God, thank You for making me in Your image. Help me treat others with love. Amen."
+    },
+    "ps139-14": {
+      big: "God made me wonderfully!",
+      meaning: "King David looked at how God made him and it made him want to praise God. Your eyes, your laugh, your brain, your heart: God made every part of you, and He did an amazing job. You are not a mistake.",
+      words: [["fearfully", "with great awe and care"], ["marvellous", "amazing, wonderful"], ["knoweth right well", "knows very well"]],
+      talk: "What is something amazing about how God made your body? What makes you special?",
+      quiz: { q: "How did God make you?", options: ["Wonderfully", "By accident", "Boringly"], answer: 0 },
+      doIt: "Look in a mirror each morning and say, \"God made me wonderfully!\"",
+      prayer: "Dear God, I praise You because You made me wonderfully. Amen."
+    },
+    "ps150-6": {
+      big: "Everything that breathes should praise God!",
+      meaning: "This is the very last verse of the book of Psalms. It says everyone and everything that has breath (people, birds, lions, even puppies!) should praise the LORD. If you are breathing, you can praise God.",
+      words: [["hath breath", "has breath, is alive"], ["praise", "to tell how great someone is"], ["Praise ye", "you all praise"]],
+      talk: "What are some ways we can praise God? (Singing, praying, clapping, thanking Him...)",
+      quiz: { q: "Who should praise the LORD?", options: ["Only grown-ups", "Everything that has breath", "Only birds"], answer: 1 },
+      doIt: "Sing a praise song to God every day this week, even a short one!",
+      prayer: "Dear God, as long as I have breath, I want to praise You. Amen."
+    },
+
+    // ---- Who Is Jesus? ----
+    "jn1-1": {
+      big: "Jesus was with God from the very beginning.",
+      meaning: "John calls Jesus \"the Word.\" Words tell us what someone is thinking, and Jesus shows us exactly who God is. Jesus didn't start at Christmas; He was with God before anything was made, and He is God.",
+      words: [["the Word", "a special name for Jesus"], ["In the beginning", "before anything was made"]],
+      talk: "Why do you think John called Jesus \"the Word\"? How does Jesus show us what God is like?",
+      quiz: { q: "In this verse, who is \"the Word\"?", options: ["A book", "Jesus", "An angel"], answer: 1 },
+      doIt: "Read a story about Jesus this week and ask: what does this show me about God?",
+      prayer: "Dear Jesus, thank You for showing me what God is like. Amen."
+    },
+    "lk2-11": {
+      big: "Jesus was born to save us!",
+      meaning: "An angel said this to shepherds on the night Jesus was born in Bethlehem, the city of King David. It was the best news ever: the Saviour everyone had been waiting for had finally come!",
+      words: [["city of David", "Bethlehem, where King David was from"], ["Saviour", "someone who rescues"], ["Christ", "God's chosen King"]],
+      talk: "Who heard this news first? Why was it such good news?",
+      quiz: { q: "Who said these words to the shepherds?", options: ["An angel", "Mary", "A king"], answer: 0 },
+      doIt: "Tell someone the good news that Jesus came to save us, even if it isn't Christmas!",
+      prayer: "Dear God, thank You for sending Jesus to be my Saviour. Amen."
+    },
+    "jn8-12": {
+      big: "Jesus is the light of the world.",
+      meaning: "Darkness can be scary, and it's hard to see where to go. Jesus said He is the light of the world. When we follow Him, we don't have to stumble around in the dark of sin and sadness, because He shows us the way to live.",
+      words: [["spake", "spoke"], ["followeth", "follows"], ["darkness", "being lost, sin, not knowing God"]],
+      talk: "What happens when you turn on a light in a dark room? How is Jesus like a light?",
+      quiz: { q: "Jesus said, \"I am the ___ of the world.\"", options: ["king", "light", "sun"], answer: 1 },
+      doIt: "Each night this week when you turn off the light, remember Jesus is your light.",
+      prayer: "Dear Jesus, You are the light of the world. Help me follow You. Amen."
+    },
+    "jn10-11": {
+      big: "Jesus is my good shepherd.",
+      meaning: "A good shepherd protects his sheep even if it's dangerous. Jesus is the best shepherd of all: He loved us so much that He gave His life on the cross for us, His sheep.",
+      words: [["shepherd", "someone who takes care of sheep"], ["giveth his life", "gives up His life"]],
+      talk: "What would a good shepherd do if a wolf came? What did Jesus do for us?",
+      quiz: { q: "What does the good shepherd give for the sheep?", options: ["Grass", "His life", "A fence"], answer: 1 },
+      doIt: "Draw a picture of Jesus the Good Shepherd with you as one of the sheep.",
+      prayer: "Dear Jesus, thank You for being my Good Shepherd and giving Your life for me. Amen."
+    },
+    "jn11-35": {
+      big: "Jesus understands when I'm sad.",
+      meaning: "This is the shortest verse in the Bible! Jesus's friend Lazarus had died, and Jesus cried with Lazarus's sisters. Even though Jesus was about to bring Lazarus back to life, He still felt sad with His friends. Jesus cares about your feelings too.",
+      words: [["wept", "cried"]],
+      talk: "Why do you think Jesus cried? How does it help to know Jesus understands sad feelings?",
+      quiz: { q: "What is special about this verse?", options: ["It's the longest", "It's the shortest in the Bible", "It has no words"], answer: 1 },
+      doIt: "When someone is sad this week, be with them and care like Jesus did.",
+      prayer: "Dear Jesus, thank You for caring when I feel sad. Amen."
+    },
+    "heb13-8": {
+      big: "Jesus never changes.",
+      meaning: "Lots of things change: we grow, seasons change, friends move away. But Jesus is always the same. The Jesus who loved people and kept His promises long ago is the same Jesus who loves you today and will forever.",
+      words: [["to day", "an old way to write \"today\""], ["for ever", "always, with no end"]],
+      talk: "What are some things that change? Why is it good that Jesus never changes?",
+      quiz: { q: "When is Jesus the same?", options: ["Only yesterday", "Yesterday, today, and forever", "Only on Sundays"], answer: 1 },
+      doIt: "When something changes this week, remember: Jesus is still the same.",
+      prayer: "Dear Jesus, thank You for always being the same and always loving me. Amen."
+    },
+    "mt19-14": {
+      big: "Jesus welcomes children!",
+      meaning: "Parents brought their children to Jesus, but His disciples tried to send them away. Jesus said no! Let the children come! Jesus loves kids and wants them to come to Him. You are never too young to know Jesus.",
+      words: [["Suffer", "an old word meaning \"let\" or \"allow\""], ["forbid them not", "don't stop them"], ["kingdom of heaven", "God's family and kingdom"]],
+      talk: "How do you think the children felt when Jesus welcomed them? How can you come to Jesus?",
+      quiz: { q: "What did Jesus say about the children?", options: ["Send them away", "Let them come to me", "They are too little"], answer: 1 },
+      doIt: "Spend a few minutes each day talking to Jesus. He always has time for you!",
+      prayer: "Dear Jesus, thank You for welcoming kids like me. I want to come to You. Amen."
+    },
+
+    // ---- God's Love & Saving Grace ----
+    "1jn4-8": {
+      big: "God is love.",
+      meaning: "God doesn't just love a little bit; God IS love. Everything He does is loving. When we know God, His love fills us up and flows out to other people.",
+      words: [["loveth", "loves"], ["knoweth", "knows"]],
+      talk: "What does it mean that God IS love? How can people tell if we know God?",
+      quiz: { q: "This verse says God is ___.", options: ["love", "far away", "angry"], answer: 0 },
+      doIt: "Write \"God is love\" on a sticky note and put it where you'll see it every day.",
+      prayer: "Dear God, thank You for being love. Fill me with Your love for others. Amen."
+    },
+    "rom3-23": {
+      big: "Everyone has sinned.",
+      meaning: "Sin means doing wrong things, like lying, being unkind, or disobeying, and not doing what God wants. This verse says ALL people have sinned, kids and grown-ups. None of us is perfect like God. That's why we all need Jesus.",
+      words: [["sinned", "done wrong things against God"], ["come short", "missed, not reached"], ["glory of God", "God's perfect goodness"]],
+      talk: "Has anyone never sinned? Why does everyone need Jesus?",
+      quiz: { q: "Who has sinned?", options: ["Only bad people", "All people", "Nobody"], answer: 1 },
+      doIt: "When you do something wrong this week, say sorry to God and to the person you hurt.",
+      prayer: "Dear God, I know I have sinned. Thank You for sending Jesus to help me. Amen."
+    },
+    "rom5-8": {
+      big: "Jesus died for us even when we were sinners.",
+      meaning: "God didn't wait for us to be good first. While we were still doing wrong things, Jesus died on the cross for us. That's how we know how big God's love is!",
+      words: [["commendeth", "shows, proves"], ["yet", "still"], ["sinners", "people who do wrong"]],
+      talk: "Would you give your favorite thing to someone who was mean to you? What did God do for us?",
+      quiz: { q: "When did Christ die for us?", options: ["After we were perfect", "While we were still sinners", "Never"], answer: 1 },
+      doIt: "Be kind to someone this week even if they haven't been kind to you.",
+      prayer: "Dear God, thank You for loving me even when I do wrong. Thank You, Jesus, for dying for me. Amen."
+    },
+    "rom6-23": {
+      big: "God offers a free gift: eternal life!",
+      meaning: "\"Wages\" are what you earn for work. Sin earns death, which means being separated from God. But God offers something we could never earn: the free gift of eternal life with Him through Jesus.",
+      words: [["wages", "what you earn or get paid"], ["eternal life", "life with God that never ends"]],
+      talk: "What's the difference between wages and a gift? How do you receive a gift?",
+      quiz: { q: "What is the gift of God?", options: ["Money", "Eternal life", "Good grades"], answer: 1 },
+      doIt: "Give someone a small gift this week and talk about God's gift to us.",
+      prayer: "Dear God, thank You for the free gift of eternal life through Jesus. Amen."
+    },
+    "eph2-8": {
+      big: "God saves us by grace, as a gift.",
+      meaning: "Grace means getting a good gift we don't deserve. We can't earn our way to God by being good enough. God saves us because He is kind, and we receive it by faith, trusting Jesus.",
+      words: [["grace", "God's kindness we don't deserve"], ["saved", "rescued from sin"], ["faith", "trusting God"]],
+      talk: "Can we be good enough to earn God's love? Why is it a gift?",
+      quiz: { q: "How are we saved?", options: ["By grace through faith", "By being perfect", "By being rich"], answer: 0 },
+      doIt: "Show grace this week: be kind to someone who doesn't expect it.",
+      prayer: "Dear God, thank You for saving me by Your grace. Amen."
+    },
+    "1jn1-9": {
+      big: "When I say sorry, God forgives me.",
+      meaning: "To confess means to tell God what we did wrong and say we're sorry. God always keeps His promise to forgive us and to make our hearts clean, like washing away dirt.",
+      words: [["confess", "to admit what you did wrong"], ["faithful", "always keeps promises"], ["cleanse", "to wash clean"], ["unrighteousness", "wrong things, sin"]],
+      talk: "How does it feel to say sorry? How does it feel to be forgiven?",
+      quiz: { q: "What does God do when we confess our sins?", options: ["Forgives us", "Ignores us", "Stays angry"], answer: 0 },
+      doIt: "At bedtime this week, tell God anything you did wrong that day and thank Him for forgiving you.",
+      prayer: "Dear God, I'm sorry for the wrong things I've done. Thank You for forgiving me. Amen."
+    },
+    "2co5-17": {
+      big: "Jesus makes me new!",
+      meaning: "A caterpillar becomes a butterfly, a whole new creature! When we belong to Jesus, He gives us a new start. Our old sins are gone, and He helps us grow to be more like Him.",
+      words: [["in Christ", "belonging to Jesus"], ["new creature", "a brand-new person"], ["passed away", "gone"]],
+      talk: "How is a butterfly different from a caterpillar? What changes when someone follows Jesus?",
+      quiz: { q: "If anyone is in Christ, they are a ___.", options: ["new creature", "caterpillar", "stranger"], answer: 0 },
+      doIt: "Watch a video or read about how caterpillars become butterflies and talk about this verse.",
+      prayer: "Dear Jesus, thank You for making me new. Help me grow more like You. Amen."
+    },
+    "lam3-22": {
+      big: "God's love is new every morning.",
+      meaning: "Jeremiah wrote this during a very sad time. But he remembered that God's love and kindness never run out. Every morning is a fresh start with God's mercy, and God is always faithful.",
+      words: [["mercies", "kindness when we don't deserve it"], ["consumed", "completely destroyed"], ["compassions", "caring love"], ["faithfulness", "always keeping promises"]],
+      talk: "Why is every morning a fresh start? How has God been faithful to your family?",
+      quiz: { q: "How often are God's mercies new?", options: ["Once a year", "Every morning", "Never"], answer: 1 },
+      doIt: "When you wake up each day this week, say, \"Great is Your faithfulness!\"",
+      prayer: "Dear God, thank You that Your love is new every morning. Amen."
+    },
+
+    // ---- Trust & Courage ----
+    "ps46-1": {
+      big: "God is my safe place.",
+      meaning: "A refuge is a safe place to hide, like a strong fort during a storm. God is our refuge! He gives us strength, and He is always right there to help when trouble comes.",
+      words: [["refuge", "a safe place"], ["very present", "always right here"]],
+      talk: "Where do you feel safe? How is God like a safe fort?",
+      quiz: { q: "God is our refuge and ___.", options: ["strength", "secret", "story"], answer: 0 },
+      doIt: "Build a blanket fort and read this verse inside it!",
+      prayer: "Dear God, You are my safe place. Thank You for always helping me. Amen."
+    },
+    "isa41-10": {
+      big: "Don't be afraid; God will hold me up.",
+      meaning: "God said this to His people when they were afraid. He made big promises: I am with you, I am your God, I will make you strong, I will help you, and I will hold you up. God makes those same promises to us.",
+      words: [["dismayed", "upset and discouraged"], ["uphold", "hold up, keep from falling"], ["righteousness", "God's perfect goodness"]],
+      talk: "How many promises can you find in this verse? Which one do you need most?",
+      quiz: { q: "What does God say He will do?", options: ["Leave us alone", "Strengthen and help us", "Only watch"], answer: 1 },
+      doIt: "Count the promises in this verse on your fingers each day this week.",
+      prayer: "Dear God, thank You for being with me and holding me up. Amen."
+    },
+    "lk1-37": {
+      big: "Nothing is impossible for God!",
+      meaning: "An angel told Mary she would have a baby, Jesus, even though it seemed impossible. Then the angel said this verse. God is so powerful that nothing is too hard for Him.",
+      words: [["impossible", "something that can't happen"]],
+      talk: "What seems impossible to you? What are some \"impossible\" things God did in the Bible?",
+      quiz: { q: "With God, what is impossible?", options: ["Almost everything", "Nothing", "Big things"], answer: 1 },
+      doIt: "Pray about something that seems too hard, and trust God with it.",
+      prayer: "Dear God, nothing is too hard for You. I trust You with the big things. Amen."
+    },
+    "mt6-33": {
+      big: "Put God first!",
+      meaning: "Jesus told people not to worry about food or clothes. Instead, put God first: love Him and do what's right. God knows what we need and will take care of us.",
+      words: [["seek", "look for, go after"], ["kingdom of God", "God being King of our lives"], ["righteousness", "doing what is right"], ["added unto you", "given to you"]],
+      talk: "What does it look like to put God first in your day?",
+      quiz: { q: "What should we seek first?", options: ["Toys", "The kingdom of God", "Being popular"], answer: 1 },
+      doIt: "Start each day this week with a short prayer before anything else.",
+      prayer: "Dear God, help me put You first in everything. Amen."
+    },
+
+    // ---- Loving Others ----
+    "jn13-34": {
+      big: "Love one another like Jesus loves us.",
+      meaning: "Jesus said this to His friends the night before He died. He had just washed their dirty feet to show how to serve. He gave them a new rule: love each other the same way He loves us.",
+      words: [["commandment", "a rule or instruction"], ["ye", "you (more than one person)"]],
+      talk: "How did Jesus show love to people? How can you love like that?",
+      quiz: { q: "How should we love one another?", options: ["As Jesus loved us", "Only if they're nice", "Only family"], answer: 0 },
+      doIt: "Serve someone this week like Jesus did: help with a chore without being asked.",
+      prayer: "Dear Jesus, help me love others the way You love me. Amen."
+    },
+    "lk6-31": {
+      big: "Treat others the way you want to be treated.",
+      meaning: "This is called the Golden Rule. Think about how you like to be treated: kindly, fairly, with respect. Jesus says treat everyone else that way too!",
+      words: [["would", "want"], ["likewise", "the same way"]],
+      talk: "How do you like to be treated? What would the Golden Rule look like at school?",
+      quiz: { q: "How should we treat others?", options: ["The way we want to be treated", "However we feel", "Like they treat us"], answer: 0 },
+      doIt: "Before you act this week, ask: \"Would I want someone to do this to me?\"",
+      prayer: "Dear God, help me treat others the way I want to be treated. Amen."
+    },
+    "pr17-17": {
+      big: "A true friend loves all the time.",
+      meaning: "A real friend doesn't only love you when things are fun. They love you on hard days too. A brother (or sister) is there to help in tough times. We can be that kind of friend!",
+      words: [["loveth", "loves"], ["adversity", "hard times, trouble"]],
+      talk: "What makes someone a good friend? How can you be a good friend on a hard day?",
+      quiz: { q: "When does a friend love?", options: ["Only on fun days", "At all times", "Only on birthdays"], answer: 1 },
+      doIt: "Check on a friend this week and ask how they're doing.",
+      prayer: "Dear God, help me be a friend who loves at all times. Amen."
+    },
+    "pr15-1": {
+      big: "Gentle words calm anger.",
+      meaning: "When someone is angry, yelling back makes it worse, like pouring gas on a fire. But gentle, kind words are like water. They help cool things down.",
+      words: [["soft answer", "gentle, calm words"], ["wrath", "big anger"], ["grievous", "harsh, hurtful"]],
+      talk: "What happens when two people yell at each other? What could you say gently instead?",
+      quiz: { q: "What turns away anger?", options: ["Yelling louder", "A soft answer", "Slamming a door"], answer: 1 },
+      doIt: "When you feel upset this week, take a breath and use a soft voice.",
+      prayer: "Dear God, help me use gentle words, even when I'm upset. Amen."
+    },
+    "gal5-22": {
+      big: "God's Spirit grows good fruit in me.",
+      meaning: "An apple tree grows apples. When God's Holy Spirit lives in us, He grows good \"fruit\" in our lives: love, joy, peace, patience, gentleness, goodness, faithfulness, meekness, and self-control.",
+      words: [["longsuffering", "patience"], ["meekness", "humble gentleness"], ["temperance", "self-control"]],
+      talk: "Which fruit of the Spirit is easiest for you? Which is hardest?",
+      quiz: { q: "Which one is a fruit of the Spirit?", options: ["Grumpiness", "Joy", "Bragging"], answer: 1 },
+      doIt: "Pick one fruit of the Spirit to practice each day this week.",
+      prayer: "Dear God, please grow Your good fruit in my life. Amen."
+    },
+    "mic6-8": {
+      big: "Do right, love mercy, walk with God.",
+      meaning: "People wondered what God really wanted. Micah said God already showed us: be fair and do right, love showing kindness, and walk humbly with God, staying close to Him and not being proud.",
+      words: [["shewed", "showed"], ["require", "want, ask for"], ["justly", "fairly, doing right"], ["humbly", "not proud"]],
+      talk: "What are the three things God asks in this verse? Which could you do today?",
+      quiz: { q: "What does God ask us to love?", options: ["Mercy", "Money", "Winning"], answer: 0 },
+      doIt: "Be fair when you play games this week, even if you might lose.",
+      prayer: "Dear God, help me do right, love mercy, and walk humbly with You. Amen."
+    },
+
+    // ---- Living for God ----
+    "ex20-12": {
+      big: "Honor your father and mother.",
+      meaning: "This is one of the Ten Commandments God gave Moses. To honor means to respect and value. God wants us to treat our parents with respect, and it comes with a promise of blessing.",
+      words: [["honour", "respect and value"], ["thy days may be long", "you will have a long, good life"]],
+      talk: "What are some ways to show honor to your parents?",
+      quiz: { q: "Who should we honor in this verse?", options: ["Our father and mother", "Only teachers", "Only kings"], answer: 0 },
+      doIt: "Write a thank-you note to your parents or a grown-up who cares for you.",
+      prayer: "Dear God, thank You for my parents. Help me honor them. Amen."
+    },
+    "mt22-37": {
+      big: "Love God with everything!",
+      meaning: "Someone asked Jesus which commandment was the greatest. Jesus said: love God with ALL your heart (your feelings), ALL your soul (your whole life), and ALL your mind (your thoughts).",
+      words: [["Thou shalt", "you should, you will"], ["soul", "the deepest part of you"]],
+      talk: "How can you love God with your heart? With your mind?",
+      quiz: { q: "Jesus said this is the ___ commandment.", options: ["smallest", "greatest", "newest"], answer: 1 },
+      doIt: "Every day this week, tell God one reason you love Him.",
+      prayer: "Dear God, I want to love You with all my heart, soul, and mind. Amen."
+    },
+    "1ti4-12": {
+      big: "Kids can be good examples too!",
+      meaning: "Paul wrote to Timothy, who was young. Don't let anyone think you're too young to matter! Young people can show others how to follow Jesus by how they talk, act, love, believe, and stay pure.",
+      words: [["despise thy youth", "look down on you for being young"], ["conversation", "the way you live and act"], ["charity", "love"], ["purity", "being clean and good inside"]],
+      talk: "How could a kid be an example to grown-ups? Which part of this verse can you work on?",
+      quiz: { q: "Can young people be good examples?", options: ["No, only adults", "Yes!", "Only on Sundays"], answer: 1 },
+      doIt: "Be an example this week in how you speak: no unkind words!",
+      prayer: "Dear God, help me be a good example, even though I'm young. Amen."
+    },
+    "mt5-16": {
+      big: "Let your light shine!",
+      meaning: "Jesus said His followers are like lights. When we do good and kind things, people notice, and it points them to God, so they praise Him.",
+      words: [["glorify", "to praise and honor"], ["good works", "good and kind actions"]],
+      talk: "What good things could you do that would help others see God's love?",
+      quiz: { q: "When people see our good works, who gets the glory?", options: ["Us", "Our Father in heaven", "Nobody"], answer: 1 },
+      doIt: "Do one secret good deed each day this week.",
+      prayer: "Dear God, help my light shine so others see Your love. Amen."
+    },
+    "1co10-31": {
+      big: "Do everything for God!",
+      meaning: "Even ordinary things like eating, drinking, playing, and homework can be done for God's glory. When we do things with thankfulness, kindness, and our best effort, we honor God.",
+      words: [["whatsoever", "whatever"], ["glory of God", "honoring God and showing how great He is"]],
+      talk: "How could you play a game or do homework \"for the glory of God\"?",
+      quiz: { q: "What should we do for God's glory?", options: ["Only praying", "Everything", "Only big things"], answer: 1 },
+      doIt: "Do your chores this week with a good attitude, as a gift to God.",
+      prayer: "Dear God, help me do everything for You. Amen."
+    },
+
+    // ---- Joy, Thanks & Prayer ----
+    "ps136-1": {
+      big: "Thank God, because He is good!",
+      meaning: "Psalm 136 repeats \"his mercy endureth for ever\" in every single verse! God wants us to remember it over and over: He is good, and His love never runs out.",
+      words: [["mercy", "kind, loving care"], ["endureth", "lasts"]],
+      talk: "Why do you think this psalm repeats the same line 26 times?",
+      quiz: { q: "How long does God's mercy last?", options: ["For a day", "For ever", "Until we're bad"], answer: 1 },
+      doIt: "Make a thankful list together, and after each item say, \"His mercy endureth for ever!\"",
+      prayer: "Dear God, thank You for being good. Your love lasts forever. Amen."
+    },
+    "php4-4": {
+      big: "Rejoice in the Lord always!",
+      meaning: "Paul was in prison when he wrote this! Yet he said to rejoice always. Our joy doesn't come from everything going our way; it comes from knowing God, and He never leaves us.",
+      words: [["rejoice", "be very happy, celebrate"], ["alway", "always"]],
+      talk: "How can someone have joy even on a bad day?",
+      quiz: { q: "When should we rejoice in the Lord?", options: ["Only on good days", "Always", "Never"], answer: 1 },
+      doIt: "When something goes wrong this week, name one thing about God that still makes you glad.",
+      prayer: "Dear God, help me find joy in You every day. Amen."
+    },
+    "1th5-17": {
+      big: "Keep on praying!",
+      meaning: "\"Without ceasing\" means don't stop. It doesn't mean praying every second, but always being ready to talk to God: in the morning, at meals, in the car, when happy or sad.",
+      words: [["without ceasing", "without stopping"]],
+      talk: "Where are some places you can pray? Do you have to close your eyes to pray?",
+      quiz: { q: "How often should we pray?", options: ["Once a year", "Without ceasing", "Only at church"], answer: 1 },
+      doIt: "Try to pray in 5 different places this week.",
+      prayer: "Dear God, thank You that I can talk to You anytime, anywhere. Amen."
+    },
+    "1th5-18": {
+      big: "Give thanks in everything.",
+      meaning: "God wants us to be thankful in every situation, not just when we get what we want. There is always something to thank God for, and a thankful heart is a happy heart.",
+      words: [["will of God", "what God wants"], ["concerning you", "for you"]],
+      talk: "Can you think of something to be thankful for even on a hard day?",
+      quiz: { q: "When should we give thanks?", options: ["In every thing", "Only on holidays", "Only when we get presents"], answer: 0 },
+      doIt: "Start a thankful jar: write one thing you're thankful for every day.",
+      prayer: "Dear God, thank You for so many good things. Help me be thankful always. Amen."
+    },
+
+    // ---- God's Word ----
+    "ps119-11": {
+      big: "I hide God's Word in my heart.",
+      meaning: "That's exactly what you're doing right now! When we memorize Bible verses, we \"hide\" them in our hearts. Then, when we're tempted to do wrong, God's Word comes to mind and helps us choose what's right.",
+      words: [["hid", "stored away, kept safe"], ["mine heart", "my heart"], ["sin", "doing wrong against God"]],
+      talk: "How can remembering a verse help you make a good choice?",
+      quiz: { q: "Why do we hide God's Word in our hearts?", options: ["So we don't sin", "To win prizes", "To forget it"], answer: 0 },
+      doIt: "Say all the verses you've memorized so far to someone in your family!",
+      prayer: "Dear God, help me hide Your Word in my heart so I can follow You. Amen."
     }
   };
 
@@ -515,10 +956,49 @@
     $("totalStars").textContent = "⭐ " + total;
   }
 
-  function renderHome() {
-    var grid = $("verseGrid");
-    grid.innerHTML = "";
-    allVerses().forEach(function (v) {
+  var topicFilter = "all";
+
+  // Same verse for everyone all week; cycles through the 52 built-ins over a year.
+  function verseOfWeek() {
+    var now = new Date();
+    var start = new Date(now.getFullYear(), 0, 1);
+    var week = Math.floor((now - start) / (7 * 24 * 60 * 60 * 1000));
+    return BUILT_IN[week % BUILT_IN.length];
+  }
+
+  function renderWeek() {
+    var v = verseOfWeek();
+    var card = $("weekCard");
+    card.innerHTML = "";
+    card.appendChild(el("div", "week-label", "📅 Verse of the Week"));
+    card.appendChild(el("div", "week-ref", v.emoji + " " + v.ref));
+    card.appendChild(el("div", "week-big", lessonFor(v).big));
+    var b = el("button", "btn sun", "Start this week's lesson ➡");
+    b.addEventListener("click", function () { openVerse(v.id); });
+    card.appendChild(b);
+  }
+
+  function renderProgress() {
+    var list = allVerses();
+    var done = list.filter(function (v) { return starsFor(v.id) >= MAX_STARS; }).length;
+    $("progressLabel").textContent = "🏆 " + done + " of " + list.length + " verses memorized";
+    $("progressFill").style.width = (list.length ? (done / list.length) * 100 : 0) + "%";
+  }
+
+  function renderFilters() {
+    var box = $("topicFilters");
+    box.innerHTML = "";
+    var opts = [{ id: "all", name: "All", emoji: "📚" }].concat(TOPICS);
+    if (state.custom.length) opts.push({ id: "custom", name: "My Verses", emoji: "📜" });
+    opts.forEach(function (t) {
+      var b = el("button", "filter", t.emoji + " " + t.name);
+      b.setAttribute("aria-pressed", topicFilter === t.id ? "true" : "false");
+      b.addEventListener("click", function () { topicFilter = t.id; renderHome(); });
+      box.appendChild(b);
+    });
+  }
+
+  function verseTile(v) {
       var b = el("button", "verse-tile");
       var top = el("div", "tile-top");
       top.appendChild(el("span", "tile-emoji", v.emoji || "📜"));
@@ -528,7 +1008,28 @@
       b.appendChild(el("div", "ref", v.ref));
       b.appendChild(el("div", "peek", v.text));
       b.addEventListener("click", function () { openVerse(v.id); });
-      grid.appendChild(b);
+      return b;
+  }
+
+  function renderHome() {
+    renderWeek();
+    renderProgress();
+    renderFilters();
+    var wrap = $("verseGrid");
+    wrap.innerHTML = "";
+    var groups = TOPICS.map(function (t) {
+      return { t: t, verses: BUILT_IN.filter(function (v) { return v.topic === t.id; }) };
+    });
+    if (state.custom.length) groups.push({ t: { id: "custom", name: "My Verses", emoji: "📜" }, verses: state.custom });
+    groups.forEach(function (g) {
+      if (topicFilter !== "all" && topicFilter !== g.t.id) return;
+      var done = g.verses.filter(function (v) { return starsFor(v.id) >= MAX_STARS; }).length;
+      var h = el("h3", "topic-title", g.t.emoji + " " + g.t.name);
+      h.appendChild(el("span", "topic-count", done + "/" + g.verses.length));
+      wrap.appendChild(h);
+      var grid = el("div", "verse-grid");
+      g.verses.forEach(function (v) { grid.appendChild(verseTile(v)); });
+      wrap.appendChild(grid);
     });
     renderTotal();
   }
