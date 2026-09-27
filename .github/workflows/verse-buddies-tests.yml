@@ -1,0 +1,36 @@
+name: Verse Buddies tests
+
+on:
+  push:
+    paths:
+      - "bible-memory/**"
+      - ".github/workflows/verse-buddies-tests.yml"
+  pull_request:
+    paths:
+      - "bible-memory/**"
+      - ".github/workflows/verse-buddies-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Playwright and Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+
+      - name: Download KJV text for the word-for-word verse check
+        run: curl -fsSL https://raw.githubusercontent.com/thiagobodruk/bible/master/json/en_kjv.json -o "$RUNNER_TEMP/kjv.json"
+
+      - name: Run tests
+        env:
+          KJV_JSON: ${{ runner.temp }}/kjv.json
+        run: node bible-memory/tests/run-tests.js

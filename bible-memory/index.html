@@ -112,7 +112,7 @@
   .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
   .ref-big { font-size: 26px; font-weight: 800; margin: 0; }
 
-  .tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 14px; }
+  .tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin-bottom: 14px; }
 
   .week-card { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); }
   .week-label { font-weight: 800; font-size: 15px; opacity: .9; }
@@ -153,7 +153,7 @@
   .grownup { font-size: 15px; color: var(--muted); }
   .tab {
     border: 2px solid var(--line); background: var(--card); border-radius: 14px;
-    padding: 8px 4px; font-weight: 700; font-size: 15px; line-height: 1.15;
+    padding: 8px 2px; font-weight: 700; font-size: 15px; line-height: 1.15; overflow-wrap: anywhere;
   }
   .tab .ic { display: block; font-size: 24px; }
   .tab[aria-selected="true"] { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); }
@@ -523,7 +523,7 @@
       big: "Everything that breathes should praise God!",
       meaning: "This is the very last verse of the book of Psalms. It says everyone and everything that has breath (people, birds, lions, even puppies!) should praise the LORD. If you are breathing, you can praise God.",
       words: [["hath breath", "has breath, is alive"], ["praise", "to tell how great someone is"], ["Praise ye", "you all praise"]],
-      talk: "What are some ways we can praise God? (Singing, praying, clapping, thanking Him...)",
+      talk: "Singing, praying, clapping, saying thank you... what are some ways YOU can praise God?",
       quiz: { q: "Who should praise the LORD?", options: ["Only grown-ups", "Everything that has breath", "Only birds"], answer: 1 },
       doIt: "Sing a praise song to God every day this week, even a short one!",
       prayer: "Dear God, as long as I have breath, I want to praise You. Amen."
@@ -777,7 +777,7 @@
       meaning: "Someone asked Jesus which commandment was the greatest. Jesus said: love God with ALL your heart (your feelings), ALL your soul (your whole life), and ALL your mind (your thoughts).",
       words: [["Thou shalt", "you should, you will"], ["soul", "the deepest part of you"]],
       talk: "How can you love God with your heart? With your mind?",
-      quiz: { q: "Jesus said this is the ___ commandment.", options: ["smallest", "greatest", "newest"], answer: 1 },
+      quiz: { q: "Love the Lord thy God with all thy heart, and with all thy soul, and with all thy ___.", options: ["mind", "money", "friends"], answer: 0 },
       doIt: "Every day this week, tell God one reason you love Him.",
       prayer: "Dear God, I want to love You with all my heart, soul, and mind. Amen."
     },
@@ -1099,7 +1099,7 @@
   function listenButton() {
     var b = el("button", "btn sun", "🔊 Listen");
     b.addEventListener("click", function () {
-      if (!speak(current.text + ". " + current.ref)) b.textContent = "🔇 Not available";
+      if (!speak(current.text + " " + current.ref)) b.textContent = "🔇 Not available";
     });
     return b;
   }
@@ -1354,6 +1354,11 @@
       restart.className = "btn";
     }
   }
+
+  // Read-only view of the content for the automated tests in bible-memory/tests.
+  window.VerseBuddiesData = Object.freeze({
+    topics: TOPICS, verses: BUILT_IN, lessons: LESSONS, maxStars: MAX_STARS, storeKey: STORE_KEY
+  });
 
   renderHome();
 })();
