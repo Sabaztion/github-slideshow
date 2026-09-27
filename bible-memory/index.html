@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verse Buddies</title>
+<meta name="description" content="A playful Bible verse memorization app for kids.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fff8ec;
+    --card: #ffffff;
+    --ink: #2b2250;
+    --muted: #6d6690;
+    --primary: #6c4cf1;
+    --primary-ink: #ffffff;
+    --sun: #ffc93c;
+    --mint: #3ecf8e;
+    --coral: #ff6b6b;
+    --sky: #4fb3ff;
+    --chip: #efeaff;
+    --line: #e6def7;
+    --shadow: 0 6px 0 rgba(43, 34, 80, 0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1b1733;
+      --card: #28224a;
+      --ink: #f4f1ff;
+      --muted: #b8b0de;
+      --primary: #8b73ff;
+      --chip: #372f63;
+      --line: #3d3569;
+      --shadow: 0 6px 0 rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1b1733;
+    --card: #28224a;
+    --ink: #f4f1ff;
+    --muted: #b8b0de;
+    --primary: #8b73ff;
+    --chip: #372f63;
+    --line: #3d3569;
+    --shadow: 0 6px 0 rgba(0, 0, 0, 0.35);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Baloo 2", "Comic Sans MS", system-ui, sans-serif;
+    font-size: 18px;
+    line-height: 1.4;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 16px; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-bottom: 16px;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo .badge {
+    width: 48px; height: 48px; border-radius: 14px; background: var(--sun);
+    display: grid; place-items: center; font-size: 28px; box-shadow: var(--shadow);
+  }
+  .logo h1 { margin: 0; font-size: 28px; line-height: 1; }
+  .logo small { color: var(--muted); display: block; font-size: 15px; }
+  .total-stars {
+    background: var(--card); border: 2px solid var(--line); border-radius: 999px;
+    padding: 6px 14px; font-weight: 800; white-space: nowrap;
+  }
+
+  .card {
+    background: var(--card); border: 2px solid var(--line); border-radius: 22px;
+    padding: 18px; box-shadow: var(--shadow); margin-bottom: 16px;
+  }
+
+  .verse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+  .verse-tile {
+    text-align: left; background: var(--card); border: 2px solid var(--line);
+    border-radius: 18px; padding: 14px; box-shadow: var(--shadow);
+    transition: transform .12s ease;
+  }
+  .verse-tile:hover { transform: translateY(-2px); }
+  .verse-tile:active { transform: translateY(2px); box-shadow: none; }
+  .verse-tile .ref { font-weight: 800; font-size: 20px; }
+  .verse-tile .peek { color: var(--muted); font-size: 15px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .stars { letter-spacing: 2px; font-size: 18px; }
+  .stars .off { opacity: .25; }
+  .tile-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .tile-emoji { font-size: 26px; }
+
+  .section-title { font-size: 20px; margin: 20px 0 10px; }
+
+  .btn {
+    border: none; border-radius: 16px; padding: 12px 18px; font-weight: 800;
+    background: var(--primary); color: var(--primary-ink); box-shadow: var(--shadow);
+    font-size: 18px;
+  }
+  .btn:active { transform: translateY(3px); box-shadow: none; }
+  .btn.ghost { background: var(--chip); color: var(--ink); }
+  .btn.sun { background: var(--sun); color: #2b2250; }
+  .btn.mint { background: var(--mint); color: #10352a; }
+  .btn:disabled { opacity: .5; cursor: default; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .ref-big { font-size: 26px; font-weight: 800; margin: 0; }
+
+  .tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+  .tab {
+    border: 2px solid var(--line); background: var(--card); border-radius: 14px;
+    padding: 8px 4px; font-weight: 700; font-size: 15px; line-height: 1.15;
+  }
+  .tab .ic { display: block; font-size: 24px; }
+  .tab[aria-selected="true"] { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); }
+
+  .verse-text { font-size: 26px; line-height: 1.6; font-weight: 600; }
+  .word { display: inline-block; margin: 0 2px; }
+  .blank {
+    display: inline-block; min-width: 2.2em; border-bottom: 4px solid var(--primary);
+    color: transparent; border-radius: 2px; margin: 0 4px; cursor: pointer; user-select: none;
+  }
+  .blank.peeked { color: var(--primary); border-bottom-color: var(--sun); }
+  .hint { color: var(--muted); font-size: 16px; margin-top: 10px; }
+
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; align-items: center; }
+  .meter { flex: 1; min-width: 160px; }
+  .meter label { font-size: 15px; color: var(--muted); }
+  input[type=range] { width: 100%; accent-color: var(--primary); }
+
+  .built { min-height: 90px; border: 3px dashed var(--line); border-radius: 18px; padding: 12px; font-size: 22px; font-weight: 600; line-height: 1.8; }
+  .built .placed { background: var(--chip); border-radius: 10px; padding: 2px 8px; margin: 2px; display: inline-block; }
+  .pool { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  .chip {
+    border: none; background: var(--sky); color: #06243d; border-radius: 14px;
+    padding: 8px 14px; font-size: 20px; font-weight: 800; box-shadow: var(--shadow);
+  }
+  .chip:active { transform: translateY(3px); box-shadow: none; }
+  .chip.used { visibility: hidden; }
+  .chip.wrong { background: var(--coral); animation: shake .35s; }
+  .chip.glow { outline: 4px solid var(--sun); }
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+  }
+
+  .letters { font-size: 28px; font-weight: 800; letter-spacing: 1px; line-height: 1.7; }
+  .letters .fl { display: inline-block; min-width: 1.3em; text-align: center; margin: 0 3px; border-radius: 8px; cursor: pointer; }
+  .letters .fl.show { background: var(--chip); padding: 0 6px; }
+
+  .celebrate {
+    text-align: center; padding: 18px; border-radius: 20px; background: var(--mint); color: #10352a;
+    font-weight: 800; font-size: 22px; margin-top: 14px; box-shadow: var(--shadow);
+  }
+  .celebrate .big { font-size: 44px; display: block; }
+
+  form label { display: block; font-weight: 700; margin: 10px 0 4px; }
+  form input, form textarea {
+    width: 100%; font: inherit; font-size: 18px; padding: 10px 12px; border-radius: 12px;
+    border: 2px solid var(--line); background: var(--bg); color: var(--ink);
+  }
+  form textarea { min-height: 100px; resize: vertical; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
+  .confetti { position: fixed; top: -20px; font-size: 26px; pointer-events: none; animation: fall linear forwards; z-index: 10; }
+  @keyframes fall { to { transform: translateY(110vh) rotate(540deg); } }
+
+  .foot { color: var(--muted); font-size: 14px; text-align: center; margin: 24px 0 8px; }
+  .hidden { display: none !important; }
+
+  @media (max-width: 480px) {
+    .verse-text { font-size: 22px; }
+    .tab { font-size: 13px; }
+    .logo h1 { font-size: 24px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .confetti, .chip.wrong { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">
+      <div class="badge" aria-hidden="true">📖</div>
+      <div>
+        <h1>Verse Buddies</h1>
+        <small>Hide God's Word in your heart!</small>
+      </div>
+    </div>
+    <div class="total-stars" id="totalStars" aria-live="polite">⭐ 0</div>
+  </header>
+
+  <!-- Home: pick a verse -->
+  <main id="home">
+    <div class="card">
+      <strong>How to play:</strong> pick a verse, then try each game. Finish <em>Build It</em> to earn a star.
+      Get 3 stars and the verse is memorized! 🏆
+    </div>
+    <h2 class="section-title">Pick a verse</h2>
+    <div class="verse-grid" id="verseGrid"></div>
+    <div class="row">
+      <button class="btn sun" id="addBtn">➕ Add my own verse</button>
+    </div>
+
+    <div class="card hidden" id="addCard" style="margin-top:16px">
+      <form id="addForm">
+        <label for="newRef">Where is it? (like "Psalm 23:1")</label>
+        <input id="newRef" required maxlength="60" autocomplete="off">
+        <label for="newText">The verse words</label>
+        <textarea id="newText" required maxlength="600"></textarea>
+        <div class="row">
+          <button class="btn mint" type="submit">Save verse</button>
+          <button class="btn ghost" type="button" id="cancelAdd">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </main>
+
+  <!-- Practice screen -->
+  <section id="practice" class="hidden">
+    <div class="topbar">
+      <button class="btn ghost" id="backBtn">⬅ Back</button>
+      <div class="stars" id="verseStars"></div>
+    </div>
+    <p class="ref-big" id="practiceRef"></p>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-mode="read"><span class="ic">👀</span>Read</button>
+      <button class="tab" role="tab" data-mode="hide"><span class="ic">🙈</span>Hide Words</button>
+      <button class="tab" role="tab" data-mode="letters"><span class="ic">🔤</span>First Letters</button>
+      <button class="tab" role="tab" data-mode="build"><span class="ic">🧱</span>Build It</button>
+    </div>
+
+    <div class="card" id="stage"></div>
+  </section>
+
+  <p class="foot">Verses from the King James Version (public domain). Progress is saved on this device.</p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var BUILT_IN = [
+    { id: "gen1-1",  emoji: "🌍", ref: "Genesis 1:1", text: "In the beginning God created the heaven and the earth." },
+    { id: "1jn4-19", emoji: "❤️", ref: "1 John 4:19", text: "We love him, because he first loved us." },
+    { id: "ps23-1",  emoji: "🐑", ref: "Psalm 23:1", text: "The LORD is my shepherd; I shall not want." },
+    { id: "ps56-3",  emoji: "🛡️", ref: "Psalm 56:3", text: "What time I am afraid, I will trust in thee." },
+    { id: "eph6-1",  emoji: "🏠", ref: "Ephesians 6:1", text: "Children, obey your parents in the Lord: for this is right." },
+    { id: "ps118-24",emoji: "☀️", ref: "Psalm 118:24", text: "This is the day which the LORD hath made; we will rejoice and be glad in it." },
+    { id: "ps119-105",emoji: "🔦", ref: "Psalm 119:105", text: "Thy word is a lamp unto my feet, and a light unto my path." },
+    { id: "php4-13", emoji: "💪", ref: "Philippians 4:13", text: "I can do all things through Christ which strengtheneth me." },
+    { id: "1pe5-7",  emoji: "🤗", ref: "1 Peter 5:7", text: "Casting all your care upon him; for he careth for you." },
+    { id: "pr3-5",   emoji: "🙏", ref: "Proverbs 3:5", text: "Trust in the LORD with all thine heart; and lean not unto thine own understanding." },
+    { id: "eph4-32", emoji: "🤝", ref: "Ephesians 4:32", text: "And be ye kind one to another, tenderhearted, forgiving one another, even as God for Christ's sake hath forgiven you." },
+    { id: "jn14-6",  emoji: "🛤️", ref: "John 14:6", text: "Jesus saith unto him, I am the way, the truth, and the life: no man cometh unto the Father, but by me." },
+    { id: "jn3-16",  emoji: "🎁", ref: "John 3:16", text: "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life." },
+    { id: "jos1-9",  emoji: "🦁", ref: "Joshua 1:9", text: "Have not I commanded thee? Be strong and of a good courage; be not afraid, neither be thou dismayed: for the LORD thy God is with thee whithersoever thou goest." }
+  ];
+  var MAX_STARS = 3;
+  var STORE_KEY = "verseBuddies.v1";
+
+  // ---- storage (fails soft) ----
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (raw) {
+        var data = JSON.parse(raw);
+        return { stars: data.stars || {}, custom: data.custom || [] };
+      }
+    } catch (e) {}
+    return { stars: {}, custom: [] };
+  }
+  var state = load();
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  function allVerses() { return BUILT_IN.concat(state.custom); }
+  function findVerse(id) {
+    var list = allVerses();
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
+  function starsFor(id) { return state.stars[id] || 0; }
+
+  // ---- helpers ----
+  var $ = function (id) { return document.getElementById(id); };
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function words(text) { return text.trim().split(/\s+/); }
+  // Strip punctuation so "Son," matches "Son" when checking order.
+  function bare(w) { return w.replace(/[^A-Za-z0-9']/g, "").toLowerCase(); }
+  function shuffle(arr) {
+    var a = arr.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  function starString(n) {
+    var s = el("span", "stars");
+    for (var i = 0; i < MAX_STARS; i++) {
+      var st = el("span", i < n ? "" : "off", "⭐");
+      s.appendChild(st);
+    }
+    s.setAttribute("aria-label", n + " of " + MAX_STARS + " stars");
+    return s;
+  }
+  function speak(text) {
+    if (!("speechSynthesis" in window)) return false;
+    window.speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance(text);
+    u.rate = 0.85;
+    u.pitch = 1.1;
+    window.speechSynthesis.speak(u);
+    return true;
+  }
+  function confetti() {
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    var bits = ["⭐", "🎉", "✨", "💛", "🌈"];
+    for (var i = 0; i < 28; i++) {
+      var c = el("span", "confetti", bits[i % bits.length]);
+      c.style.left = Math.random() * 100 + "vw";
+      c.style.animationDuration = 1.6 + Math.random() * 1.6 + "s";
+      c.style.animationDelay = Math.random() * 0.4 + "s";
+      document.body.appendChild(c);
+      setTimeout(function (n) { return function () { n.remove(); }; }(c), 3800);
+    }
+  }
+
+  // ---- home ----
+  function renderTotal() {
+    var total = 0;
+    allVerses().forEach(function (v) { total += starsFor(v.id); });
+    $("totalStars").textContent = "⭐ " + total;
+  }
+
+  function renderHome() {
+    var grid = $("verseGrid");
+    grid.innerHTML = "";
+    allVerses().forEach(function (v) {
+      var b = el("button", "verse-tile");
+      var top = el("div", "tile-top");
+      top.appendChild(el("span", "tile-emoji", v.emoji || "📜"));
+      var n = starsFor(v.id);
+      top.appendChild(n >= MAX_STARS ? el("span", "", "🏆") : starString(n));
+      b.appendChild(top);
+      b.appendChild(el("div", "ref", v.ref));
+      b.appendChild(el("div", "peek", v.text));
+      b.addEventListener("click", function () { openVerse(v.id); });
+      grid.appendChild(b);
+    });
+    renderTotal();
+  }
+
+  $("addBtn").addEventListener("click", function () {
+    $("addCard").classList.remove("hidden");
+    $("newRef").focus();
+  });
+  $("cancelAdd").addEventListener("click", function () {
+    $("addForm").reset();
+    $("addCard").classList.add("hidden");
+  });
+  $("addForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var ref = $("newRef").value.trim();
+    var text = $("newText").value.trim().replace(/\s+/g, " ");
+    if (!ref || !text) return;
+    state.custom.push({ id: "custom-" + Date.now(), emoji: "📜", ref: ref, text: text, custom: true });
+    save();
+    $("addForm").reset();
+    $("addCard").classList.add("hidden");
+    renderHome();
+  });
+
+  // ---- practice ----
+  var current = null;
+  var mode = "read";
+
+  function openVerse(id) {
+    current = findVerse(id);
+    if (!current) return;
+    $("home").classList.add("hidden");
+    $("practice").classList.remove("hidden");
+    $("practiceRef").textContent = current.ref;
+    renderVerseStars();
+    setMode("read");
+    window.scrollTo(0, 0);
+  }
+
+  function renderVerseStars() {
+    var box = $("verseStars");
+    box.innerHTML = "";
+    box.appendChild(starString(starsFor(current.id)));
+  }
+
+  $("backBtn").addEventListener("click", function () {
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    $("practice").classList.add("hidden");
+    $("home").classList.remove("hidden");
+    renderHome();
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (t) {
+    t.addEventListener("click", function () { setMode(t.getAttribute("data-mode")); });
+  });
+
+  function setMode(m) {
+    mode = m;
+    Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (t) {
+      t.setAttribute("aria-selected", t.getAttribute("data-mode") === m ? "true" : "false");
+    });
+    var stage = $("stage");
+    stage.innerHTML = "";
+    ({ read: renderRead, hide: renderHide, letters: renderLetters, build: renderBuild })[m](stage);
+  }
+
+  function listenButton() {
+    var b = el("button", "btn sun", "🔊 Listen");
+    b.addEventListener("click", function () {
+      if (!speak(current.text + ". " + current.ref)) b.textContent = "🔇 Not available";
+    });
+    return b;
+  }
+
+  function renderRead(stage) {
+    stage.appendChild(el("div", "verse-text", current.text));
+    stage.appendChild(el("p", "hint", "Read it out loud 3 times. Then try Hide Words!"));
+    var c = el("div", "controls");
+    c.appendChild(listenButton());
+    var next = el("button", "btn", "Next game ➡");
+    next.addEventListener("click", function () { setMode("hide"); });
+    c.appendChild(next);
+    stage.appendChild(c);
+  }
+
+  function renderHide(stage) {
+    var ws = words(current.text);
+    // Hide words in a random but stable order so each step removes one more.
+    var order = shuffle(ws.map(function (_, i) { return i; }));
+    var hiddenCount = Math.ceil(ws.length / 4);
+
+    var text = el("div", "verse-text");
+    stage.appendChild(text);
+    stage.appendChild(el("p", "hint", "Say the whole verse. Tap a blank to peek."));
+
+    var c = el("div", "controls");
+    var meter = el("div", "meter");
+    var lab = el("label");
+    lab.setAttribute("for", "hideRange");
+    var range = document.createElement("input");
+    range.type = "range"; range.id = "hideRange";
+    range.min = 0; range.max = ws.length; range.value = hiddenCount;
+    meter.appendChild(lab); meter.appendChild(range);
+    var more = el("button", "btn", "🙈 Hide more");
+    c.appendChild(meter); c.appendChild(more);
+    stage.appendChild(c);
+
+    function draw() {
+      var hidden = {};
+      order.slice(0, hiddenCount).forEach(function (i) { hidden[i] = true; });
+      text.innerHTML = "";
+      ws.forEach(function (w, i) {
+        if (hidden[i]) {
+          var b = el("span", "blank", w);
+          b.setAttribute("role", "button");
+          b.setAttribute("tabindex", "0");
+          b.setAttribute("aria-label", "hidden word, tap to peek");
+          var peek = function () { b.classList.toggle("peeked"); };
+          b.addEventListener("click", peek);
+          b.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); peek(); } });
+          text.appendChild(b);
+        } else {
+          text.appendChild(el("span", "word", w));
+        }
+        text.appendChild(document.createTextNode(" "));
+      });
+      lab.textContent = "Hidden words: " + hiddenCount + " of " + ws.length;
+      range.value = hiddenCount;
+      more.disabled = hiddenCount >= ws.length;
+      more.textContent = hiddenCount >= ws.length ? "🎉 All hidden!" : "🙈 Hide more";
+    }
+    range.addEventListener("input", function () { hiddenCount = +range.value; draw(); });
+    more.addEventListener("click", function () {
+      hiddenCount = Math.min(ws.length, hiddenCount + Math.max(1, Math.ceil(ws.length / 6)));
+      draw();
+    });
+    draw();
+  }
+
+  function renderLetters(stage) {
+    var ws = words(current.text);
+    var box = el("div", "letters");
+    ws.forEach(function (w) {
+      var first = (w.match(/[A-Za-z0-9]/) || [w[0]])[0];
+      var tail = w.replace(/^[^A-Za-z0-9]*[A-Za-z0-9]/, "");
+      var punct = (tail.match(/[^A-Za-z0-9']+$/) || [""])[0];
+      var s = el("span", "fl", first + punct);
+      s.setAttribute("role", "button");
+      s.setAttribute("tabindex", "0");
+      var flip = function () {
+        var showing = s.classList.toggle("show");
+        s.textContent = showing ? w : first + punct;
+      };
+      s.addEventListener("click", flip);
+      s.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flip(); } });
+      box.appendChild(s);
+      box.appendChild(document.createTextNode(" "));
+    });
+    stage.appendChild(box);
+    stage.appendChild(el("p", "hint", "Each letter starts a word. Say the verse! Tap a letter if you get stuck."));
+    var c = el("div", "controls");
+    c.appendChild(listenButton());
+    var next = el("button", "btn", "Build It ➡");
+    next.addEventListener("click", function () { setMode("build"); });
+    c.appendChild(next);
+    stage.appendChild(c);
+  }
+
+  function renderBuild(stage) {
+    var ws = words(current.text);
+    var pos = 0;
+    var mistakes = 0;
+
+    stage.appendChild(el("p", "hint", "Tap the words in the right order to build the verse."));
+    var built = el("div", "built");
+    built.setAttribute("aria-live", "polite");
+    stage.appendChild(built);
+    var pool = el("div", "pool");
+    stage.appendChild(pool);
+    var c = el("div", "controls");
+    var hintBtn = el("button", "btn ghost", "💡 Hint");
+    var restart = el("button", "btn ghost", "🔄 Start over");
+    c.appendChild(hintBtn); c.appendChild(restart);
+    stage.appendChild(c);
+
+    var chips = shuffle(ws.map(function (w, i) { return { w: w, i: i }; })).map(function (item) {
+      var b = el("button", "chip", item.w);
+      b.addEventListener("click", function () { tap(b, item); });
+      pool.appendChild(b);
+      return { btn: b, item: item };
+    });
+
+    function tap(b, item) {
+      if (b.classList.contains("used")) return;
+      // Accept any chip with the same word, so repeated words ("the", "and") don't trip kids up.
+      if (bare(item.w) === bare(ws[pos])) {
+        b.classList.add("used");
+        built.appendChild(el("span", "placed", ws[pos]));
+        built.appendChild(document.createTextNode(" "));
+        pos++;
+        chips.forEach(function (ch) { ch.btn.classList.remove("glow"); });
+        if (pos === ws.length) finish();
+      } else {
+        mistakes++;
+        b.classList.remove("wrong");
+        void b.offsetWidth;
+        b.classList.add("wrong");
+        setTimeout(function () { b.classList.remove("wrong"); }, 400);
+      }
+    }
+
+    hintBtn.addEventListener("click", function () {
+      if (pos >= ws.length) return;
+      for (var i = 0; i < chips.length; i++) {
+        var ch = chips[i];
+        if (!ch.btn.classList.contains("used") && bare(ch.item.w) === bare(ws[pos])) {
+          ch.btn.classList.add("glow");
+          ch.btn.focus();
+          break;
+        }
+      }
+    });
+    restart.addEventListener("click", function () { setMode("build"); });
+
+    function finish() {
+      var before = starsFor(current.id);
+      var earned = before < MAX_STARS;
+      if (earned) {
+        state.stars[current.id] = before + 1;
+        save();
+      }
+      renderVerseStars();
+      renderTotal();
+      confetti();
+      var now = starsFor(current.id);
+      var msg = el("div", "celebrate");
+      msg.appendChild(el("span", "big", now >= MAX_STARS ? "🏆" : "🌟"));
+      var line;
+      if (now >= MAX_STARS && earned) line = "You memorized " + current.ref + "! Amazing!";
+      else if (now >= MAX_STARS) line = "Still a champion! You know " + current.ref + "!";
+      else line = "Great job! You earned a star! (" + now + " of " + MAX_STARS + ")";
+      msg.appendChild(document.createTextNode(line));
+      if (mistakes === 0) msg.appendChild(el("div", "", "Perfect — no mistakes! 🎯"));
+      stage.appendChild(msg);
+      pool.classList.add("hidden");
+      hintBtn.disabled = true;
+      restart.textContent = "🔁 Play again";
+      restart.className = "btn";
+    }
+  }
+
+  renderHome();
+})();
+</script>
+</body>
+</html>

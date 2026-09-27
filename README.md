@@ -1,5 +1,7 @@
 # Your GitHub Learning Lab Repository for Introducing GitHub
 
+> 📖 **New: Verse Buddies** — a Bible memorization app for kids lives in [`bible-memory/`](bible-memory/index.html). Open `bible-memory/index.html` in a browser (or visit `/bible-memory/` on the GitHub Pages site). Kids pick a verse and practice with four games: Read (with read-aloud), Hide Words, First Letters, and Build It (earns stars). Progress and custom verses are saved in the browser.
+
 Welcome to **your** repository for your GitHub Learning Lab course. This repository will be used during the different activities that I will be guiding you through. See a word you don't understand? We've included an emoji 📖 next to some key terms. Click on it to see its definition.
 
 Oh! I haven't introduced myself...
