@@ -1,0 +1,1112 @@
+// Guest manager UI. All pure logic lives in logic.js; this file wires it to the DOM.
+import {
+  STAGES, CHECKS, PLACEHOLDERS, DEFAULT_TEMPLATES, getStage, nextStage, moveGuest, advanceGuest,
+  prepProgress, toggleCheck, initials, displayName, createGuest, updateGuestField, filterGuests,
+  sortGuests, formatRecording, formatDay, formatTime, nowInZone, isValidTimeZone, shiftMonth,
+  monthLabel, monthGrid, groupByDay, WEEKDAY_NAMES, renderEmail, buildMailto, serializeState,
+  parseState, upsertGuest, removeGuest, clearSamples, hasSamples, createInitialState, suggestSlots,
+  parseLocal, toLocalString, buildIntakeUrl, countByStage
+} from './logic.js';
+import { loadState, loadStoredState, saveState, browserTimeZone, STORAGE_KEY } from './store.js';
+
+/* ---------------------------------------------------------------- */
+/* Helpers                                                           */
+/* ---------------------------------------------------------------- */
+
+const $ = (sel, root = document) => root.querySelector(sel);
+
+/** Tiny element builder. Text is always inserted as text, never as HTML. */
+function h(tag, attrs, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    else if (k === 'dataset') Object.assign(el.dataset, v);
+    else if (k === 'value' || k === 'checked' || k === 'selected' || k === 'disabled') el[k] = v;
+    else if (k === 'html') el.innerHTML = v; // only ever used with static icon markup
+    else el.setAttribute(k, v === true ? '' : String(v));
+  }
+  const add = (c) => {
+    if (c == null || c === false) return;
+    if (Array.isArray(c)) c.forEach(add);
+    else el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  };
+  children.forEach(add);
+  return el;
+}
+
+/** replaceChildren that skips null/false (replaceChildren would print "null"). */
+function fill(el, ...children) {
+  el.replaceChildren(...children.flat().filter((c) => c != null && c !== false));
+}
+
+const ICONS = {
+  close: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  prev: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>',
+  next: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>'
+};
+const icon = (name) => h('span', { html: ICONS[name], style: { display: 'inline-flex' } });
+
+const nowIso = () => new Date().toISOString();
+const cssId = (id) => (window.CSS && CSS.escape ? CSS.escape(id) : String(id).replace(/"/g, '\\"'));
+const tz = () => state.settings.timeZone;
+const todayYmd = () => nowInZone(tz()).slice(0, 10);
+
+function toast(message) {
+  const el = $('#toast');
+  el.textContent = '';
+  // Re-set on the next frame so screen readers announce repeated messages.
+  requestAnimationFrame(() => { el.textContent = message; });
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { el.textContent = ''; }, 4500);
+}
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* fall through to the legacy path */ }
+  try {
+    const ta = h('textarea', { style: { position: 'fixed', top: '-1000px', opacity: '0' }, readonly: true });
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+function download(filename, text) {
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = h('a', { href: url, download: filename });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ---------------------------------------------------------------- */
+/* State                                                             */
+/* ---------------------------------------------------------------- */
+
+let state = loadState();
+let storageWarned = false;
+
+const ui = {
+  view: 'pipeline',
+  query: '',
+  selectedId: null,
+  sort: { key: 'recording', dir: 'asc' },
+  cal: null,
+  templateId: DEFAULT_TEMPLATES[0].id,
+  panelTemplateId: DEFAULT_TEMPLATES[0].id,
+  previewGuestId: null,
+  tplLastField: 'body',
+  dragId: null
+};
+
+function commit(next, { main = true } = {}) {
+  state = next;
+  if (!saveState(state) && !storageWarned) {
+    storageWarned = true;
+    toast('Browser storage is unavailable, so changes will be lost when you close this tab. Use Export to keep a copy.');
+  }
+  renderChrome();
+  if (main) renderMain();
+}
+
+const findGuest = (id) => state.guests.find((g) => g.id === id) || null;
+
+function saveGuest(guest, opts) {
+  commit(upsertGuest(state, guest), opts);
+}
+
+/* ---------------------------------------------------------------- */
+/* Elements                                                          */
+/* ---------------------------------------------------------------- */
+
+const app = $('#app');
+const nav = $('.sidebar');
+const main = $('#main');
+const panel = $('#panel');
+const backdrop = $('#panel-backdrop');
+const board = $('#board');
+const search = $('#guest-search');
+const addDialog = $('#add-dialog');
+const addForm = $('#add-form');
+const overlayQuery = window.matchMedia('(max-width: 1179px)');
+
+const VIEWS = {
+  pipeline: { title: 'Guest pipeline', sub: () => 'Everyone from first pitch to published episode.', search: true },
+  calendar: { title: 'Recording calendar', sub: () => `Recordings by month, shown in ${tz()}.`, search: false },
+  guests: { title: 'All guests', sub: () => 'Every guest in one sortable list.', search: true },
+  templates: { title: 'Email templates', sub: () => 'Write each email once. Placeholders fill in per guest.', search: false },
+  settings: { title: 'Settings', sub: () => 'Show details, the guest intake form and backups.', search: false }
+};
+
+/* ---------------------------------------------------------------- */
+/* Chrome + routing                                                  */
+/* ---------------------------------------------------------------- */
+
+function renderChrome() {
+  $('#brand-name').textContent = state.settings.showName;
+  $('#sample-banner').hidden = !hasSamples(state);
+}
+
+function setView(view, { focus = false } = {}) {
+  if (!VIEWS[view]) view = 'pipeline';
+  ui.view = view;
+  const meta = VIEWS[view];
+  for (const link of nav.querySelectorAll('[data-view]')) {
+    if (link.dataset.view === view) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
+  for (const key of Object.keys(VIEWS)) $(`#view-${key}`).hidden = key !== view;
+  $('#view-title').textContent = meta.title;
+  $('#view-sub').textContent = meta.sub();
+  $('#search-wrap').hidden = !meta.search;
+  main.classList.toggle('is-board', view === 'pipeline');
+  document.title = `${meta.title} · ${state.settings.showName} · Guest Manager`;
+  renderMain();
+  if (focus) {
+    const title = $('#view-title');
+    title.tabIndex = -1;
+    title.focus();
+  }
+}
+
+function renderMain() {
+  $('#view-sub').textContent = VIEWS[ui.view].sub();
+  if (ui.view === 'pipeline') renderPipeline();
+  else if (ui.view === 'calendar') renderCalendar();
+  else if (ui.view === 'guests') renderGuests();
+  else if (ui.view === 'templates') renderTemplates();
+  else if (ui.view === 'settings') renderSettings();
+}
+
+/* ---------------------------------------------------------------- */
+/* Pipeline                                                          */
+/* ---------------------------------------------------------------- */
+
+function cardWhen(g) {
+  if (g.recordingAt) return formatRecording(g.recordingAt);
+  return g.stage === 'outreach' ? 'Not scheduled' : 'No date set';
+}
+
+function stagePill(stageId, extra) {
+  const s = getStage(stageId);
+  return h('span', { class: 'pill', style: { background: s.bg, color: s.fg } }, s.label, extra);
+}
+
+function sampleTag() {
+  return h('span', { class: 'tag-sample', title: 'Sample guest' }, 'Sample');
+}
+
+function guestCard(g) {
+  const p = prepProgress(g);
+  const next = nextStage(g.stage);
+  const selected = g.id === ui.selectedId;
+  return h('li', { class: `card${selected ? ' selected' : ''}`, draggable: 'true', dataset: { id: g.id } },
+    h('button', { type: 'button', class: 'card-open', dataset: { openGuest: g.id }, 'aria-expanded': String(selected), 'aria-controls': 'panel' },
+      h('span', { class: 'avatar', 'aria-hidden': 'true' }, initials(g.name)),
+      h('span', { class: 'card-who' },
+        h('span', { class: 'card-name' }, displayName(g)),
+        g.role || g.sample ? h('span', { class: 'card-role' }, g.sample ? [sampleTag(), ' '] : null, g.role) : null
+      )
+    ),
+    g.topic ? h('p', { class: 'card-topic' }, g.topic) : null,
+    h('div', { class: 'card-meta' },
+      h('span', null, cardWhen(g)),
+      h('span', null, `${p.done}/${p.total} prep`)
+    ),
+    h('span', { class: `bar${p.complete ? ' complete' : ''}`, 'aria-hidden': 'true' }, h('span', { style: { width: `${p.pct}%` } })),
+    next ? h('button', { type: 'button', class: 'card-move', dataset: { move: g.id }, 'aria-label': `Move ${displayName(g)} to ${next.label}` }, `Move to ${next.label} →`) : null
+  );
+}
+
+function renderPipeline() {
+  const visible = sortGuests(filterGuests(state.guests, ui.query), 'recording');
+  const counts = countByStage(visible);
+  board.replaceChildren(...STAGES.map((stage) => {
+    const cards = visible.filter((g) => g.stage === stage.id);
+    return h('section', { class: 'column', dataset: { stage: stage.id }, 'aria-labelledby': `col-${stage.id}` },
+      h('h2', { class: 'col-head', id: `col-${stage.id}` },
+        h('span', null, h('span', { class: 'dot', style: { background: stage.dot }, 'aria-hidden': 'true' }), stage.label),
+        h('span', { class: 'col-count' }, h('span', { class: 'sr-only' }, ', '), String(counts[stage.id]), h('span', { class: 'sr-only' }, counts[stage.id] === 1 ? ' guest' : ' guests'))
+      ),
+      h('ol', { class: 'col-list' },
+        cards.length ? cards.map(guestCard) : h('li', { class: 'empty-col' }, ui.query ? 'No matches' : 'No guests here')
+      )
+    );
+  }));
+}
+
+function moveTo(id, stageId, { focusMoved = false } = {}) {
+  const g = findGuest(id);
+  if (!g || g.stage === stageId) return;
+  saveGuest(moveGuest(g, stageId, nowIso()));
+  if (ui.selectedId === id) renderPanel();
+  toast(`Moved ${displayName(g)} to ${getStage(stageId).label}.`);
+  if (focusMoved) {
+    const card = board.querySelector(`.card[data-id="${cssId(id)}"]`);
+    const target = card && (card.querySelector('.card-move') || card.querySelector('.card-open'));
+    if (target) {
+      target.focus();
+      target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
+}
+
+function initBoard() {
+  board.addEventListener('click', (e) => {
+    const move = e.target.closest('[data-move]');
+    if (move) {
+      const g = findGuest(move.dataset.move);
+      const next = g && nextStage(g.stage);
+      if (next) moveTo(g.id, next.id, { focusMoved: true });
+      return;
+    }
+    const open = e.target.closest('[data-open-guest]');
+    if (open) return openGuest(open.dataset.openGuest);
+    const card = e.target.closest('.card');
+    if (card && !e.target.closest('button, a, input')) openGuest(card.dataset.id);
+  });
+
+  board.addEventListener('dragstart', (e) => {
+    const card = e.target.closest('.card');
+    if (!card) return;
+    ui.dragId = card.dataset.id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', card.dataset.id);
+    requestAnimationFrame(() => card.classList.add('dragging'));
+  });
+  board.addEventListener('dragend', () => {
+    ui.dragId = null;
+    board.querySelectorAll('.dragging, .drop-target').forEach((el) => el.classList.remove('dragging', 'drop-target'));
+  });
+  board.addEventListener('dragover', (e) => {
+    const col = e.target.closest('.column');
+    if (!col || !ui.dragId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    board.querySelectorAll('.drop-target').forEach((el) => el !== col && el.classList.remove('drop-target'));
+    col.classList.add('drop-target');
+  });
+  board.addEventListener('dragleave', (e) => {
+    const col = e.target.closest('.column');
+    if (col && !col.contains(e.relatedTarget)) col.classList.remove('drop-target');
+  });
+  board.addEventListener('drop', (e) => {
+    const col = e.target.closest('.column');
+    if (!col) return;
+    e.preventDefault();
+    const id = e.dataTransfer.getData('text/plain') || ui.dragId;
+    col.classList.remove('drop-target');
+    ui.dragId = null;
+    if (id) moveTo(id, col.dataset.stage);
+  });
+}
+
+/* ---------------------------------------------------------------- */
+/* Guest detail panel                                                */
+/* ---------------------------------------------------------------- */
+
+const PANEL_FIELDS = [
+  { key: 'name', label: 'Full name', span: true },
+  { key: 'pronouns', label: 'Pronouns' },
+  { key: 'role', label: 'Role or title' },
+  { key: 'topic', label: 'Topic', span: true, rows: 2 },
+  { key: 'email', label: 'Email', type: 'email' },
+  { key: 'social', label: 'Website or social' },
+  { key: 'recordingAt', label: 'Recording date & time', type: 'datetime-local', span: true, hint: () => `(${tz()})` },
+  { key: 'episode', label: 'Episode no.', inputmode: 'numeric' },
+  { key: 'episodeLink', label: 'Episode link', type: 'url' },
+  { key: 'bio', label: 'Bio', span: true, rows: 3 }
+];
+
+function fieldControl(g, f) {
+  const id = `f-${f.key}`;
+  const control = f.rows
+    ? h('textarea', { id, rows: f.rows, dataset: { field: f.key } })
+    : h('input', { id, type: f.type || 'text', inputmode: f.inputmode, dataset: { field: f.key }, autocomplete: 'off' });
+  control.value = g[f.key] || '';
+  return h('label', { class: `field${f.span ? ' span-2' : ''}` }, h('span', null, f.label, f.hint ? h('span', { class: 'hint' }, ` ${f.hint()}`) : null), control);
+}
+
+function panelEmail(g) {
+  const tpl = state.templates.find((t) => t.id === ui.panelTemplateId) || state.templates[0];
+  const email = renderEmail(tpl, g, state.settings);
+  return { tpl, ...email, href: buildMailto(g.email, email.subject, email.body) };
+}
+
+function renderPanel() {
+  const g = findGuest(ui.selectedId);
+  if (!g) return closePanel({ restore: false });
+
+  // Keep focus, caret and scroll position across re-renders.
+  const active = document.activeElement;
+  const activeId = active && panel.contains(active) ? active.id : '';
+  const caret = activeId && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
+  const scrollTop = $('.panel-scroll', panel)?.scrollTop || 0;
+
+  const stage = getStage(g.stage);
+  const next = nextStage(g.stage);
+  const p = prepProgress(g);
+  const mail = panelEmail(g);
+  const sub = [g.role, g.pronouns].filter(Boolean).join(' · ');
+
+  panel.replaceChildren(
+    h('div', { class: 'panel-scroll' },
+      h('div', { class: 'panel-top' },
+        h('button', { type: 'button', class: 'btn btn-icon', dataset: { action: 'close-panel' }, 'aria-label': 'Close guest details', title: 'Close (Esc)' }, icon('close'))
+      ),
+      h('div', { class: 'panel-head' },
+        h('span', { class: 'panel-avatar', id: 'panel-initials', 'aria-hidden': 'true' }, initials(g.name)),
+        h('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '0' } },
+          h('h2', { id: 'panel-name', tabindex: '-1' }, displayName(g)),
+          h('span', { class: 'panel-sub', id: 'panel-sub' }, sub)
+        )
+      ),
+      h('div', { class: 'stage-row' },
+        h('span', { class: 'pill', id: 'panel-pill', style: { background: stage.bg, color: stage.fg } }, stage.label),
+        h('label', { class: 'field' }, h('span', { class: 'sr-only' }, 'Stage'),
+          h('select', { id: 'panel-stage', 'aria-label': 'Stage' }, STAGES.map((s) => h('option', { value: s.id, selected: s.id === g.stage }, s.label)))
+        ),
+        g.sample ? sampleTag() : null
+      ),
+
+      h('section', { class: 'panel-section', 'aria-labelledby': 'h-details' },
+        h('h3', { class: 'section-label', id: 'h-details' }, 'Details'),
+        h('div', { class: 'field-grid' }, PANEL_FIELDS.map((f) => fieldControl(g, f)))
+      ),
+
+      g.availability.length ? h('section', { class: 'panel-section', 'aria-labelledby': 'h-avail' },
+        h('h3', { class: 'section-label', id: 'h-avail' }, 'Times the guest offered'),
+        h('ul', { class: 'slot-list' }, g.availability.map((s) =>
+          h('li', null,
+            h('span', null, `${formatDay(s)} · ${formatTime(s)}`),
+            g.recordingAt === s
+              ? h('span', { class: 'hint' }, 'Booked')
+              : h('button', { type: 'button', class: 'btn btn-quiet btn-sm', dataset: { action: 'book-slot', slot: s }, 'aria-label': `Book ${formatDay(s)} at ${formatTime(s)}` }, 'Book this time')
+          )
+        ))
+      ) : null,
+
+      h('section', { class: 'panel-section', 'aria-labelledby': 'h-prep' },
+        h('div', { class: 'panel-section-head' },
+          h('h3', { class: 'section-label', id: 'h-prep' }, 'Prep checklist'),
+          h('span', { class: 'mono' }, `${p.done} of ${p.total}`)
+        ),
+        CHECKS.map((c) => h('label', { class: 'check-row' },
+          h('input', { type: 'checkbox', id: `chk-${c.key}`, checked: g.checks[c.key], dataset: { check: c.key } }),
+          h('span', null, c.label)
+        ))
+      ),
+
+      h('section', { class: 'panel-section', 'aria-labelledby': 'h-notes' },
+        h('h3', { class: 'section-label', id: 'h-notes' }, h('label', { for: 'f-notes' }, 'Notes')),
+        (() => { const t = h('textarea', { id: 'f-notes', class: 'input', rows: 4, dataset: { field: 'notes' } }); t.value = g.notes; return t; })()
+      ),
+
+      h('section', { class: 'panel-section', 'aria-labelledby': 'h-email' },
+        h('h3', { class: 'section-label', id: 'h-email' }, 'Email from a template'),
+        h('label', { class: 'field' }, 'Template',
+          h('select', { id: 'panel-tpl' }, state.templates.map((t) => h('option', { value: t.id, selected: t.id === mail.tpl.id }, t.name)))
+        ),
+        h('div', { class: 'email-preview', id: 'panel-email-preview', tabindex: '0', 'aria-label': 'Email preview' },
+          h('strong', null, mail.subject), mail.body
+        ),
+        h('div', { class: 'btn-row' },
+          h('a', { class: 'btn btn-outline', id: 'panel-mailto', href: mail.href }, 'Open in email app'),
+          h('button', { type: 'button', class: 'btn btn-quiet', id: 'panel-copy', dataset: { action: 'copy-email' } }, 'Copy email')
+        ),
+        g.email ? null : h('p', { class: 'hint', style: { margin: 0, fontSize: '13px' } }, 'No email address yet, so your mail app will ask who to send it to.')
+      ),
+
+      h('section', { class: 'panel-section', 'aria-labelledby': 'h-danger' },
+        h('h3', { class: 'section-label', id: 'h-danger' }, 'Remove'),
+        h('button', { type: 'button', class: 'btn btn-danger', id: 'panel-delete', dataset: { action: 'delete-guest' } }, `Delete ${displayName(g)}`)
+      )
+    ),
+    h('div', { class: 'panel-foot' },
+      g.email
+        ? h('a', { class: 'btn btn-outline', href: buildMailto(g.email) }, 'Email guest')
+        : h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'focus-email' } }, 'Add email'),
+      next
+        ? h('button', { type: 'button', class: 'btn btn-primary', id: 'panel-advance', dataset: { action: 'advance' } }, `Move to ${next.label}`)
+        : h('span', { class: 'btn', style: { cursor: 'default', color: getStage('published').fg } }, 'Published ✓')
+    )
+  );
+
+  $('.panel-scroll', panel).scrollTop = scrollTop;
+  if (activeId) {
+    const el = document.getElementById(activeId);
+    if (el) {
+      el.focus({ preventScroll: true });
+      if (caret && typeof el.setSelectionRange === 'function') try { el.setSelectionRange(...caret); } catch { /* not a text input */ }
+    }
+  }
+}
+
+/** Light update while typing in the panel (no full re-render, so typing is never interrupted). */
+function refreshPanelSummary(g) {
+  $('#panel-name').textContent = displayName(g);
+  $('#panel-initials').textContent = initials(g.name);
+  $('#panel-sub').textContent = [g.role, g.pronouns].filter(Boolean).join(' · ');
+  $('#panel-delete').textContent = `Delete ${displayName(g)}`;
+  const mail = panelEmail(g);
+  $('#panel-email-preview').replaceChildren(h('strong', null, mail.subject), mail.body);
+  $('#panel-mailto').href = mail.href;
+}
+
+function syncOverlay() {
+  const overlay = overlayQuery.matches && !panel.hidden;
+  backdrop.hidden = !overlay;
+  nav.inert = overlay;
+  main.inert = overlay;
+}
+
+function openGuest(id) {
+  if (!findGuest(id)) return;
+  ui.selectedId = id;
+  panel.hidden = false;
+  app.classList.add('panel-open');
+  renderPanel();
+  renderMain();
+  syncOverlay();
+  $('#panel-name').focus();
+}
+
+function closePanel({ restore = true } = {}) {
+  const id = ui.selectedId;
+  ui.selectedId = null;
+  panel.hidden = true;
+  panel.replaceChildren();
+  app.classList.remove('panel-open');
+  syncOverlay();
+  renderMain();
+  if (restore && id) {
+    const view = $(`#view-${ui.view}`);
+    const target = view.querySelector(`[data-open-guest="${cssId(id)}"]`);
+    (target || $('#view-title')).focus();
+  }
+}
+
+function initPanel() {
+  panel.addEventListener('input', (e) => {
+    const field = e.target.dataset.field;
+    const g = findGuest(ui.selectedId);
+    if (!field || !g) return;
+    const updated = updateGuestField(g, field, e.target.value, nowIso());
+    saveGuest(updated);
+    refreshPanelSummary(updated);
+  });
+
+  panel.addEventListener('change', (e) => {
+    const g = findGuest(ui.selectedId);
+    if (!g) return;
+    if (e.target.id === 'panel-stage') {
+      moveTo(g.id, e.target.value);
+    } else if (e.target.dataset.check) {
+      saveGuest(toggleCheck(g, e.target.dataset.check, nowIso()));
+      renderPanel();
+    } else if (e.target.id === 'panel-tpl') {
+      ui.panelTemplateId = e.target.value;
+      refreshPanelSummary(g);
+    } else if (e.target.dataset.field === 'recordingAt') {
+      renderPanel(); // update "Booked" markers on offered times
+    }
+  });
+
+  panel.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const g = findGuest(ui.selectedId);
+    const action = btn.dataset.action;
+    if (action === 'close-panel') return closePanel();
+    if (!g) return;
+    if (action === 'advance') {
+      const next = nextStage(g.stage);
+      saveGuest(advanceGuest(g, nowIso()));
+      renderPanel();
+      toast(`Moved ${displayName(g)} to ${next.label}.`);
+      ($('#panel-advance') || $('#panel-stage')).focus();
+    } else if (action === 'copy-email') {
+      const mail = panelEmail(g);
+      const ok = await copyText(`To: ${g.email}\nSubject: ${mail.subject}\n\n${mail.body}`);
+      toast(ok ? 'Email copied to the clipboard.' : 'Could not copy. Select the preview text and copy it yourself.');
+    } else if (action === 'delete-guest') {
+      if (!window.confirm(`Delete ${displayName(g)}? This cannot be undone.`)) return;
+      commit(removeGuest(state, g.id));
+      closePanel({ restore: false });
+      $('#view-title').focus();
+      toast(`Deleted ${displayName(g)}.`);
+    } else if (action === 'book-slot') {
+      let updated = updateGuestField(g, 'recordingAt', btn.dataset.slot, nowIso());
+      if (updated.stage === 'outreach') updated = moveGuest(updated, 'booked', nowIso());
+      saveGuest(updated);
+      renderPanel();
+      $('#f-recordingAt').focus();
+      toast(`Booked ${displayName(g)} for ${formatRecording(btn.dataset.slot)}.`);
+    } else if (action === 'focus-email') {
+      $('#f-email').focus();
+    }
+  });
+
+  backdrop.addEventListener('click', () => closePanel());
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !panel.hidden && !addDialog.open) {
+      e.preventDefault();
+      closePanel();
+    }
+  });
+  overlayQuery.addEventListener('change', syncOverlay);
+}
+
+/* ---------------------------------------------------------------- */
+/* All guests table                                                  */
+/* ---------------------------------------------------------------- */
+
+const TABLE_COLS = [
+  { key: 'name', label: 'Name', sort: 'name' },
+  { key: 'stage', label: 'Stage', sort: 'stage' },
+  { key: 'role', label: 'Role' },
+  { key: 'topic', label: 'Topic' },
+  { key: 'recording', label: 'Recording', sort: 'recording' },
+  { key: 'prep', label: 'Prep' },
+  { key: 'episode', label: 'Ep.' }
+];
+
+function renderGuests() {
+  const view = $('#view-guests');
+  const list = sortGuests(filterGuests(state.guests, ui.query), ui.sort.key, ui.sort.dir);
+  const active = TABLE_COLS.find((c) => c.sort === ui.sort.key);
+  const dirWord = ui.sort.dir === 'asc' ? 'ascending' : 'descending';
+
+  const head = h('tr', null, TABLE_COLS.map((c) => {
+    if (!c.sort) return h('th', { scope: 'col' }, c.label);
+    const on = c.sort === ui.sort.key;
+    return h('th', { scope: 'col', 'aria-sort': on ? dirWord : null },
+      h('button', { type: 'button', class: 'sort-btn', id: `sort-${c.sort}`, dataset: { sort: c.sort } },
+        c.label,
+        h('span', { class: 'arrow', 'aria-hidden': 'true' }, on ? (ui.sort.dir === 'asc' ? '↑' : '↓') : '↕'),
+        h('span', { class: 'sr-only' }, on ? `, sorted ${dirWord}` : ', sortable')
+      )
+    );
+  }));
+
+  const rows = list.map((g) => {
+    const p = prepProgress(g);
+    return h('tr', null,
+      h('td', null,
+        h('button', { type: 'button', class: 'name-btn', dataset: { openGuest: g.id } },
+          h('span', { class: 'avatar', 'aria-hidden': 'true' }, initials(g.name)),
+          h('span', { class: 'nm' }, displayName(g))
+        ),
+        g.sample ? [' ', sampleTag()] : null
+      ),
+      h('td', null, stagePill(g.stage)),
+      h('td', { class: 'cell-muted' }, g.role),
+      h('td', { class: 'cell-muted' }, g.topic),
+      h('td', { class: 'cell-mono' }, g.recordingAt ? formatRecording(g.recordingAt) : '—'),
+      h('td', { class: 'cell-mono' }, `${p.done}/${p.total}`),
+      h('td', { class: 'cell-mono' }, g.episode || '—')
+    );
+  });
+
+  view.replaceChildren(
+    h('div', { class: 'table-wrap' },
+      h('table', { class: 'guest-table' },
+        h('caption', { class: 'sr-only' }, `All guests, ${list.length} shown, sorted by ${active.label.toLowerCase()} ${dirWord}.`),
+        h('thead', null, head),
+        h('tbody', null, rows.length ? rows : h('tr', null, h('td', { colspan: TABLE_COLS.length, class: 'table-empty' }, ui.query ? `No guests match “${ui.query}”.` : 'No guests yet. Use “Add guest” to start.')))
+      )
+    )
+  );
+}
+
+function initGuests() {
+  $('#view-guests').addEventListener('click', (e) => {
+    const sortBtn = e.target.closest('[data-sort]');
+    if (sortBtn) {
+      const key = sortBtn.dataset.sort;
+      ui.sort = ui.sort.key === key ? { key, dir: ui.sort.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' };
+      renderGuests();
+      $(`#sort-${key}`).focus();
+      return;
+    }
+    const open = e.target.closest('[data-open-guest]');
+    if (open) openGuest(open.dataset.openGuest);
+  });
+}
+
+/* ---------------------------------------------------------------- */
+/* Calendar                                                          */
+/* ---------------------------------------------------------------- */
+
+function renderCalendar() {
+  const view = $('#view-calendar');
+  if (!ui.cal) {
+    const t = parseLocal(todayYmd());
+    ui.cal = { year: t.y, month: t.m };
+  }
+  const { year, month } = ui.cal;
+  const today = todayYmd();
+  const groups = groupByDay(state.guests);
+  const weeks = monthGrid(year, month, 0);
+  const inMonthCount = weeks.flat().filter((c) => c.inMonth && groups[c.ymd]).reduce((n, c) => n + groups[c.ymd].length, 0);
+  const unscheduled = sortGuests(state.guests.filter((g) => g.stage === 'booked' && !g.recordingAt), 'name');
+
+  const cell = (c) => {
+    const events = groups[c.ymd] || [];
+    const cls = [c.inMonth ? '' : 'out', events.length ? 'has-events' : 'no-events'].filter(Boolean).join(' ');
+    return h('td', { class: cls, 'aria-current': c.ymd === today ? 'date' : null },
+      h('span', { class: 'cal-date' },
+        h('span', { class: 'num', 'aria-hidden': 'true' }, String(c.day)),
+        h('span', { class: 'wd' }, formatDay(c.ymd))
+      ),
+      events.length ? h('ul', { class: 'cal-events' }, events.map((g) => {
+        const s = getStage(g.stage);
+        return h('li', null, h('button', { type: 'button', class: 'cal-event', dataset: { openGuest: g.id }, style: { background: s.bg, color: s.fg } },
+          h('span', { class: 't' }, formatTime(g.recordingAt)),
+          h('span', { class: 'n' }, displayName(g)),
+          h('span', { class: 'sr-only' }, `, ${s.label}`)
+        ));
+      })) : null
+    );
+  };
+
+  fill(view,
+    h('div', { class: 'cal-toolbar' },
+      h('button', { type: 'button', class: 'btn btn-quiet btn-icon', id: 'cal-prev', dataset: { cal: '-1' }, 'aria-label': 'Previous month' }, icon('prev')),
+      h('h2', { id: 'cal-label', 'aria-live': 'polite' }, monthLabel(year, month)),
+      h('button', { type: 'button', class: 'btn btn-quiet btn-icon', id: 'cal-next', dataset: { cal: '1' }, 'aria-label': 'Next month' }, icon('next')),
+      h('button', { type: 'button', class: 'btn btn-quiet', id: 'cal-today', dataset: { cal: 'today' } }, 'Today'),
+      h('div', { class: 'cal-legend', 'aria-label': 'Stage colours' }, STAGES.filter((s) => s.id !== 'outreach').map((s) => stagePill(s.id)))
+    ),
+    h('table', { class: 'cal' },
+      h('caption', { class: 'sr-only' }, `Recordings in ${monthLabel(year, month)} (${tz()})`),
+      h('thead', null, h('tr', null, WEEKDAY_NAMES.map((d) => h('th', { scope: 'col', abbr: d }, d.slice(0, 3))))),
+      h('tbody', null, weeks.map((w) => h('tr', null, w.map(cell))))
+    ),
+    inMonthCount === 0 ? h('p', { class: 'cal-empty-note hint', style: { margin: 0 } }, `No recordings scheduled in ${monthLabel(year, month)}.`) : null,
+    unscheduled.length ? h('section', { class: 'unscheduled', 'aria-labelledby': 'h-unsched' },
+      h('h2', { class: 'section-label', id: 'h-unsched' }, 'Booked, no time set yet'),
+      h('ul', { class: 'chip-list' }, unscheduled.map((g) => h('li', null, h('button', { type: 'button', class: 'btn btn-quiet btn-sm', dataset: { openGuest: g.id } }, displayName(g)))))
+    ) : null
+  );
+}
+
+function initCalendar() {
+  $('#view-calendar').addEventListener('click', (e) => {
+    const nav = e.target.closest('[data-cal]');
+    if (nav) {
+      if (nav.dataset.cal === 'today') {
+        const t = parseLocal(todayYmd());
+        ui.cal = { year: t.y, month: t.m };
+      } else {
+        ui.cal = shiftMonth(ui.cal.year, ui.cal.month, Number(nav.dataset.cal));
+      }
+      const id = nav.id;
+      renderCalendar();
+      document.getElementById(id)?.focus();
+      return;
+    }
+    const open = e.target.closest('[data-open-guest]');
+    if (open) openGuest(open.dataset.openGuest);
+  });
+}
+
+/* ---------------------------------------------------------------- */
+/* Email templates                                                   */
+/* ---------------------------------------------------------------- */
+
+function previewGuest() {
+  return findGuest(ui.previewGuestId) || state.guests[0] || createGuest({ name: 'Alex Example', recordingAt: `${todayYmd()}T14:00` }, { idFn: () => 'preview' });
+}
+
+function renderTemplatePreview() {
+  const t = state.templates.find((x) => x.id === ui.templateId);
+  const mail = renderEmail(t, previewGuest(), state.settings);
+  $('#tpl-preview').replaceChildren(h('strong', null, mail.subject), mail.body);
+}
+
+function renderTemplates() {
+  const view = $('#view-templates');
+  const t = state.templates.find((x) => x.id === ui.templateId) || state.templates[0];
+  const subject = h('input', { id: 'tpl-subject', type: 'text', dataset: { tplField: 'subject' }, autocomplete: 'off' });
+  subject.value = t.subject;
+  const body = h('textarea', { id: 'tpl-body', rows: 12, dataset: { tplField: 'body' } });
+  body.value = t.body;
+  const pg = previewGuest();
+
+  view.replaceChildren(
+    h('div', { class: 'two-col' },
+      h('nav', { 'aria-label': 'Templates' },
+        h('ul', { class: 'tpl-list' }, state.templates.map((x) =>
+          h('li', null, h('button', { type: 'button', class: 'tpl-btn', dataset: { tpl: x.id }, 'aria-current': x.id === t.id ? 'true' : null }, x.name))
+        ))
+      ),
+      h('div', { style: { display: 'flex', flexDirection: 'column', gap: '20px', minWidth: '0' } },
+        h('div', { class: 'surface' },
+          h('h2', null, t.name),
+          h('p', null, 'Edits save automatically. Placeholders are filled in from each guest and your settings.'),
+          h('label', { class: 'field' }, 'Subject', subject),
+          h('div', { class: 'field' },
+            h('span', { id: 'ph-label' }, 'Insert a placeholder ', h('span', { class: 'hint' }, '(at the cursor)')),
+            h('div', { class: 'ph-list', role: 'group', 'aria-labelledby': 'ph-label' },
+              PLACEHOLDERS.map((p) => h('button', { type: 'button', class: 'ph-btn', dataset: { insert: `{{${p}}}` } }, `{{${p}}}`))
+            )
+          ),
+          h('label', { class: 'field' }, 'Body', body),
+          h('div', { class: 'btn-row', style: { alignItems: 'center' } },
+            h('span', { class: 'save-state', id: 'tpl-saved', 'aria-live': 'polite' }, 'All changes saved'),
+            h('button', { type: 'button', class: 'btn btn-quiet', style: { flex: '0 0 auto' }, dataset: { action: 'reset-template' } }, 'Reset to default')
+          )
+        ),
+        h('div', { class: 'surface' },
+          h('h2', null, 'Preview'),
+          h('label', { class: 'field' }, 'Preview with guest',
+            h('select', { id: 'tpl-preview-guest' },
+              state.guests.length
+                ? sortGuests(state.guests, 'name').map((g) => h('option', { value: g.id, selected: g.id === pg.id }, displayName(g)))
+                : h('option', { value: '' }, 'Example guest')
+            )
+          ),
+          h('div', { class: 'email-preview', id: 'tpl-preview', tabindex: '0', 'aria-label': 'Rendered email preview', style: { maxHeight: 'none' } })
+        )
+      )
+    )
+  );
+  renderTemplatePreview();
+}
+
+function updateTemplate(id, patch) {
+  commit({ ...state, templates: state.templates.map((t) => (t.id === id ? { ...t, ...patch } : t)) }, { main: false });
+  renderTemplatePreview();
+  const saved = $('#tpl-saved');
+  if (saved) saved.textContent = 'All changes saved';
+}
+
+function initTemplates() {
+  const view = $('#view-templates');
+  view.addEventListener('input', (e) => {
+    const f = e.target.dataset.tplField;
+    if (f) updateTemplate(ui.templateId, { [f]: e.target.value });
+  });
+  view.addEventListener('focusin', (e) => {
+    if (e.target.dataset.tplField) ui.tplLastField = e.target.dataset.tplField;
+  });
+  view.addEventListener('change', (e) => {
+    if (e.target.id === 'tpl-preview-guest') {
+      ui.previewGuestId = e.target.value;
+      renderTemplatePreview();
+    }
+  });
+  view.addEventListener('click', (e) => {
+    const pick = e.target.closest('[data-tpl]');
+    if (pick) {
+      ui.templateId = pick.dataset.tpl;
+      renderTemplates();
+      view.querySelector(`[data-tpl="${cssId(pick.dataset.tpl)}"]`).focus();
+      return;
+    }
+    const ins = e.target.closest('[data-insert]');
+    if (ins) {
+      const el = ui.tplLastField === 'subject' ? $('#tpl-subject') : $('#tpl-body');
+      const start = el.selectionStart ?? el.value.length;
+      const end = el.selectionEnd ?? el.value.length;
+      el.setRangeText(ins.dataset.insert, start, end, 'end');
+      el.focus();
+      updateTemplate(ui.templateId, { [el.dataset.tplField]: el.value });
+      return;
+    }
+    if (e.target.closest('[data-action="reset-template"]')) {
+      const def = DEFAULT_TEMPLATES.find((d) => d.id === ui.templateId);
+      if (!window.confirm(`Reset “${def.name}” to the default text?`)) return;
+      updateTemplate(ui.templateId, { subject: def.subject, body: def.body });
+      renderTemplates();
+      $('#tpl-subject').focus();
+      toast(`“${def.name}” reset to default.`);
+    }
+  });
+}
+
+/* ---------------------------------------------------------------- */
+/* Settings                                                          */
+/* ---------------------------------------------------------------- */
+
+function timeZoneOptions(current) {
+  let zones = [];
+  try { zones = Intl.supportedValuesOf('timeZone'); } catch { zones = []; }
+  return [...new Set(['UTC', browserTimeZone(), current, ...zones])].filter(isValidTimeZone).sort();
+}
+
+function intakeUrl() {
+  const base = new URL('intake.html', window.location.href);
+  base.search = '';
+  base.hash = '';
+  return buildIntakeUrl(base.href, state.settings);
+}
+
+function renderSettings() {
+  const view = $('#view-settings');
+  const s = state.settings;
+  const input = (attrs, value) => { const el = h('input', attrs); el.value = value; return el; };
+
+  view.replaceChildren(
+    h('div', { class: 'settings-grid' },
+      h('section', { class: 'surface', 'aria-labelledby': 'h-show' },
+        h('h2', { id: 'h-show' }, 'Your show'),
+        h('p', null, 'Used in email templates and on the guest intake form.'),
+        h('label', { class: 'field' }, 'Show name', input({ id: 'set-show', type: 'text', dataset: { setting: 'showName' }, autocomplete: 'off' }, s.showName)),
+        h('label', { class: 'field' }, 'Host time zone',
+          h('span', { class: 'hint' }, 'Recording times are entered and shown in this zone.'),
+          h('select', { id: 'set-tz', dataset: { setting: 'timeZone' } }, timeZoneOptions(s.timeZone).map((z) => h('option', { value: z, selected: z === s.timeZone }, z.replace(/_/g, ' '))))
+        ),
+        h('label', { class: 'field' }, h('span', null, 'Host email ', h('span', { class: 'hint' }, '(optional: lets guests email their intake answers to you)')),
+          input({ id: 'set-email', type: 'email', dataset: { setting: 'hostEmail' }, autocomplete: 'email' }, s.hostEmail))
+      ),
+
+      h('section', { class: 'surface', 'aria-labelledby': 'h-intake' },
+        h('h2', { id: 'h-intake' }, 'Guest intake form'),
+        h('p', null, 'Times guests can pick from. With none set, the form suggests the next Monday, Wednesday and Friday at 10 AM and 2 PM.'),
+        s.intakeSlots.length
+          ? h('ul', { class: 'slot-list' }, s.intakeSlots.map((slot) => h('li', null,
+            h('span', null, `${formatDay(slot)} · ${formatTime(slot)}`),
+            h('button', { type: 'button', class: 'btn btn-quiet btn-sm', dataset: { removeSlot: slot }, 'aria-label': `Remove ${formatDay(slot)} ${formatTime(slot)}` }, 'Remove')
+          )))
+          : h('p', { class: 'hint', style: { margin: 0, fontSize: '14px' } }, 'No custom times yet.'),
+        h('div', { class: 'inline-add' },
+          h('label', { class: 'field' }, `New time (${s.timeZone})`, h('input', { id: 'slot-new', type: 'datetime-local' })),
+          h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'add-slot' } }, 'Add time')
+        ),
+        h('div', { class: 'btn-row' },
+          h('button', { type: 'button', class: 'btn btn-quiet', dataset: { action: 'suggest-slots' } }, 'Use suggested times'),
+          s.intakeSlots.length ? h('button', { type: 'button', class: 'btn btn-quiet', dataset: { action: 'clear-slots' } }, 'Clear times') : null
+        ),
+        h('div', { class: 'field' }, 'Shareable link',
+          h('span', { class: 'hint' }, 'Carries your show name, time zone, email and times, so a remote guest sees the right details.'),
+          h('div', { class: 'share-url', id: 'share-url' }, intakeUrl())
+        ),
+        h('div', { class: 'btn-row' },
+          h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'copy-intake' } }, 'Copy link'),
+          h('a', { class: 'btn btn-quiet', id: 'open-intake', href: intakeUrl(), target: '_blank', rel: 'noopener' }, 'Open form ↗')
+        )
+      ),
+
+      h('section', { class: 'surface span-2', 'aria-labelledby': 'h-data' },
+        h('h2', { id: 'h-data' }, 'Backup and data'),
+        h('p', null, 'Everything is stored in this browser only. Export a JSON backup regularly, and import it to restore or move to another browser.'),
+        h('div', { class: 'btn-row' },
+          h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'export' } }, 'Export JSON'),
+          h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'import' } }, 'Import JSON'),
+          h('button', { type: 'button', class: 'btn btn-quiet', dataset: { action: 'clear-samples' }, disabled: !hasSamples(state) }, 'Clear sample data'),
+          h('button', { type: 'button', class: 'btn btn-danger', dataset: { action: 'reset-all' } }, 'Erase everything')
+        )
+      )
+    )
+  );
+}
+
+function updateSettings(patch, { rerender = false } = {}) {
+  commit({ ...state, settings: { ...state.settings, ...patch } }, { main: rerender });
+  const share = $('#share-url');
+  if (share) share.textContent = intakeUrl();
+  const open = $('#open-intake');
+  if (open) open.href = intakeUrl();
+  document.title = `${VIEWS[ui.view].title} · ${state.settings.showName} · Guest Manager`;
+}
+
+function initSettings() {
+  const view = $('#view-settings');
+  view.addEventListener('input', (e) => {
+    const key = e.target.dataset.setting;
+    if (key === 'showName') updateSettings({ showName: e.target.value.trim() ? e.target.value : 'My Podcast' });
+    else if (key === 'hostEmail') updateSettings({ hostEmail: e.target.value.trim() });
+  });
+  view.addEventListener('change', (e) => {
+    if (e.target.dataset.setting === 'timeZone' && isValidTimeZone(e.target.value)) {
+      updateSettings({ timeZone: e.target.value }, { rerender: true });
+      $('#set-tz').focus();
+      toast(`Time zone set to ${e.target.value}.`);
+    }
+  });
+  view.addEventListener('click', async (e) => {
+    const rm = e.target.closest('[data-remove-slot]');
+    if (rm) {
+      updateSettings({ intakeSlots: state.settings.intakeSlots.filter((s) => s !== rm.dataset.removeSlot) }, { rerender: true });
+      $('#slot-new').focus();
+      return;
+    }
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    if (action === 'add-slot') {
+      const val = $('#slot-new').value;
+      const p = parseLocal(val);
+      if (!p || !p.hasTime) {
+        toast('Pick a date and time first.');
+        $('#slot-new').focus();
+        return;
+      }
+      const slot = toLocalString(p);
+      updateSettings({ intakeSlots: [...new Set([...state.settings.intakeSlots, slot])].sort() }, { rerender: true });
+      $('#slot-new').focus();
+      toast(`Added ${formatDay(slot)} · ${formatTime(slot)}.`);
+    } else if (action === 'suggest-slots') {
+      updateSettings({ intakeSlots: suggestSlots(todayYmd()) }, { rerender: true });
+      $('[data-action="suggest-slots"]').focus();
+      toast('Added suggested times for the coming week.');
+    } else if (action === 'clear-slots') {
+      updateSettings({ intakeSlots: [] }, { rerender: true });
+      $('[data-action="suggest-slots"]').focus();
+    } else if (action === 'copy-intake') {
+      toast((await copyText(intakeUrl())) ? 'Intake link copied.' : 'Could not copy. Select the link text and copy it yourself.');
+    } else if (action === 'export') {
+      download(`guest-manager-backup-${todayYmd()}.json`, serializeState(state, nowIso()));
+      toast(`Exported ${state.guests.length} guests.`);
+    } else if (action === 'import') {
+      $('#import-file').click();
+    } else if (action === 'reset-all') {
+      if (!window.confirm('Erase all guests, templates and settings in this browser and start again with sample data? Export a backup first if you might need it.')) return;
+      if (ui.selectedId) closePanel({ restore: false });
+      commit(createInitialState({ timeZone: browserTimeZone(), today: nowInZone(browserTimeZone()).slice(0, 10) }));
+      $('[data-action="reset-all"]').focus();
+      toast('Started fresh with sample data.');
+    }
+  });
+
+  $('#import-file').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const next = parseState(await file.text(), { timeZone: browserTimeZone() });
+      if (!window.confirm(`Replace everything in this browser with the backup “${file.name}” (${next.guests.length} guests)?`)) return;
+      if (ui.selectedId) closePanel({ restore: false });
+      commit(next);
+      setView(ui.view);
+      toast(`Imported ${next.guests.length} guests.`);
+    } catch (err) {
+      toast(`Import failed: ${err.message}`);
+    }
+  });
+}
+
+function clearSampleData() {
+  const n = state.guests.filter((g) => g.sample).length;
+  if (!n) return;
+  if (ui.selectedId && findGuest(ui.selectedId)?.sample) closePanel({ restore: false });
+  commit(clearSamples(state));
+  $('#view-title').focus();
+  toast(`Removed ${n} sample guest${n === 1 ? '' : 's'}.`);
+}
+
+/* ---------------------------------------------------------------- */
+/* Add guest dialog                                                  */
+/* ---------------------------------------------------------------- */
+
+function openAddDialog() {
+  addForm.reset();
+  $('#add-error').hidden = true;
+  addForm.elements.name.removeAttribute('aria-invalid');
+  addForm.elements.stage.value = 'outreach';
+  if (typeof addDialog.showModal === 'function') addDialog.showModal();
+  else addDialog.setAttribute('open', '');
+  addForm.elements.name.focus();
+}
+
+function closeAddDialog() {
+  if (typeof addDialog.close === 'function') addDialog.close();
+  else addDialog.removeAttribute('open');
+}
+
+function initAddDialog() {
+  addForm.elements.stage.replaceChildren(...STAGES.map((s) => h('option', { value: s.id }, s.label)));
+  addForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = addForm.elements;
+    const name = f.name.value.trim();
+    if (!name) {
+      const err = $('#add-error');
+      err.textContent = 'Enter the guest’s name.';
+      err.hidden = false;
+      f.name.setAttribute('aria-invalid', 'true');
+      f.name.setAttribute('aria-describedby', 'add-error');
+      f.name.focus();
+      return;
+    }
+    const p = parseLocal(f.recordingAt.value);
+    const guest = createGuest({
+      name,
+      role: f.role.value.trim(),
+      topic: f.topic.value.trim(),
+      email: f.email.value.trim(),
+      stage: f.stage.value,
+      recordingAt: p && p.hasTime ? toLocalString(p) : ''
+    });
+    if (ui.query && filterGuests([guest], ui.query).length === 0) {
+      ui.query = '';
+      search.value = '';
+    }
+    saveGuest(guest);
+    closeAddDialog();
+    openGuest(guest.id);
+    toast(`Added ${guest.name} to ${getStage(guest.stage).label}.`);
+  });
+  addDialog.addEventListener('click', (e) => {
+    if (e.target.closest('[data-action="close-add"]')) closeAddDialog();
+  });
+}
+
+/* ---------------------------------------------------------------- */
+/* Boot                                                              */
+/* ---------------------------------------------------------------- */
+
+function init() {
+  initBoard();
+  initPanel();
+  initGuests();
+  initCalendar();
+  initTemplates();
+  initSettings();
+  initAddDialog();
+
+  search.addEventListener('input', () => {
+    ui.query = search.value;
+    renderMain();
+  });
+
+  document.addEventListener('click', (e) => {
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    if (action === 'add-guest') openAddDialog();
+    else if (action === 'clear-samples') clearSampleData();
+  });
+
+  window.addEventListener('hashchange', () => setView(location.hash.slice(1), { focus: true }));
+
+  // Pick up guests saved from the intake form in another tab.
+  window.addEventListener('storage', (e) => {
+    if (e.key !== STORAGE_KEY) return;
+    const fresh = loadStoredState();
+    if (!fresh) return;
+    state = fresh;
+    renderChrome();
+    renderMain();
+    if (ui.selectedId) {
+      if (findGuest(ui.selectedId)) renderPanel();
+      else closePanel({ restore: false });
+    }
+  });
+
+  renderChrome();
+  setView(location.hash.slice(1) || 'pipeline');
+}
+
+init();
