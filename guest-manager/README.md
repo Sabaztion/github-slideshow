@@ -32,6 +32,20 @@ A small, self-contained web app for running a podcast's guest pipeline, from fir
 - **Links.** Settings has a general availability link. Each guest's panel has **Copy availability link** (it pre-fills that guest's id, name and email) and **Email availability request**, which uses the new *Availability request* template and its `{{availability_link}}` placeholder. The intake form links to the calendar too ("Pick your times on a calendar").
 - **On the host side**, "Check for new submissions" imports availability into the matching guest (by guest id, then email, else a new Outreach guest), converted to the host's time zone. The latest calendar replaces earlier free times. The guest panel lists upcoming ranges; pick a start time and press **Book** to set the recording time (an Outreach guest moves to Booked). The Recording calendar can overlay one guest's free times ("Show availability for").
 
+## Episode plan and guest Q&A
+
+Each guest's panel has **Open episode plan** (`#plan/<guest id>`), a full-width view with:
+
+- **Episode:** working title and angle / summary.
+- **Talking points:** an ordered list you can add to, edit, reorder (↑ ↓) and delete, with optional minutes per point and a running total.
+- **Questions to ask on air:** a separate list you draft for the interview.
+- **Questions for the guest:** a pre-interview questionnaire. It starts from the reusable **Q&A question bank** in Settings (one question per line, up to 20), and you can edit, reorder, delete or add custom questions per guest. **Copy Q&A link** and **Email the questions** (the *Pre-interview questions* template with `{{qa_link}}`) save the questions and mark the Q&A as sent. Received answers show under each question with the date answered, and **→ Talking point** / **→ On-air question** copy an answer into the plan in one click. Topics the guest suggested are shown too.
+- **Print run sheet** opens the print dialog with a clean printable page (print CSS): title, guest and recording time, angle, intro/bio, talking points with timings, on-air questions and the guest's answers. **Download run sheet (.txt)** saves the same content as text.
+
+Pipeline cards and the panel show the Q&A status: *Q&A sent* or *Q&A answered* (cards stay quiet while it's not sent). A separate "Q&A answered" prep checklist item was not added: it would change the existing five-step progress on every card, and the status chip already shows it.
+
+**The guest page** (`qa.html`) is opened from the share link, which carries the show name, the guest's id, name and email, the endpoint and the questions as compact URL-safe base64 JSON. Links are capped at 20 questions of up to 300 characters and about 3,000 characters of encoded questions; if some don't fit, the plan view warns you how many were left out. Guests answer in labelled text areas with a character counter (2,000 characters each), can add "Topics I'd love to talk about", and their draft autosaves in their browser until it's sent. Answers go to the Apps Script endpoint as `type: "qa"` (the `QA` sheet), with the same copy / email fallback. "Check for new submissions" imports them into the matching guest (by id, then email); re-importing never duplicates, and for each question the latest answer wins and keeps its answered-at time.
+
 ## Where your data lives
 
 Everything is stored in your browser's `localStorage` under the key `podcast-guest-manager:v1`. Nothing is sent anywhere unless you connect the optional backend below (then only guest pages send their answers to your own Google Sheet). That means:
@@ -99,6 +113,8 @@ This needs Node 18 or later. On Node 22 a directory argument loads `tests/index.
 | `index.html` | The app: pipeline, calendar, table, templates, settings |
 | `intake.html` | Guest intake form |
 | `availability.html` | Guest availability calendar |
+| `qa.html` | Guest pre-interview questions |
+| `js/qa.js` | Q&A page UI |
 | `js/availability.js` | Availability calendar UI |
 | `css/styles.css` | Shared styles (Bricolage Grotesque, IBM Plex Sans, IBM Plex Mono via Google Fonts) |
 | `js/logic.js` | Pure logic, no DOM or storage access |

@@ -90,6 +90,7 @@
     <section class="view" id="view-guests" aria-labelledby="view-title" hidden></section>
     <section class="view" id="view-templates" aria-labelledby="view-title" hidden></section>
     <section class="view" id="view-settings" aria-labelledby="view-title" hidden></section>
+    <section class="view" id="view-plan" aria-labelledby="view-title" hidden></section>
   </main>
 
   <div class="panel" id="panel" role="region" aria-label="Guest details" hidden></div>
@@ -126,6 +127,9 @@
     </div>
   </form>
 </dialog>
+
+<!-- Filled in just before printing; only this shows on paper. -->
+<div class="print-sheet" id="print-sheet"></div>
 
 <input type="file" id="import-file" accept="application/json,.json" hidden>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

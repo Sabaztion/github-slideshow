@@ -10,7 +10,11 @@ import {
 import { loadState, loadStoredState, saveState, browserTimeZone, STORAGE_KEY, unreadableData, releaseUnreadable, loadSync, saveSync } from './store.js';
 import { normalizeEndpoint, safeHttpUrl } from './logic.js';
 import { applySubmissions, importSummary, sinceFor } from './remote.js';
-import { upcomingRanges, rangesByDay, formatRange, SLOT_MINUTES } from './slots.js';
+import { upcomingRanges, rangesByDay, formatRange } from './slots.js';
+import {
+  addItem, updateItem, moveItem, removeItem, segmentTimings, formatMinutes, qaStatus, QA_STATUS_LABELS, markQaSent,
+  encodeQuestions, promoteAnswer, runSheet, runSheetToText, normalizePlan, normalizeQa, seedQuestions, normalizeQuestionBank, QA_LIMITS
+} from './plan.js';
 import { checkHealth, fetchSubmissions } from './api.js';
 
 /* ---------------------------------------------------------------- */
@@ -86,8 +90,8 @@ async function copyText(text) {
   }
 }
 
-function download(filename, text) {
-  const blob = new Blob([text], { type: 'application/json' });
+function download(filename, text, type = 'application/json') {
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const a = h('a', { href: url, download: filename });
   document.body.append(a);
@@ -155,7 +159,8 @@ const VIEWS = {
   calendar: { title: 'Recording calendar', sub: () => `Recordings by month, shown in ${tz()}.`, search: false },
   guests: { title: 'All guests', sub: () => 'Every guest in one sortable list.', search: true },
   templates: { title: 'Email templates', sub: () => 'Write each email once. Placeholders fill in per guest.', search: false },
-  settings: { title: 'Settings', sub: () => 'Show details, the guest intake form and backups.', search: false }
+  settings: { title: 'Settings', sub: () => 'Show details, the guest intake form and backups.', search: false },
+  plan: { title: 'Episode plan', sub: () => { const g = findGuest(ui.planGuestId); return g ? `For ${displayName(g)}: talking points, on-air questions and the guest’s Q&A.` : ''; }, search: false }
 };
 
 /* ---------------------------------------------------------------- */
@@ -191,7 +196,14 @@ function startFreshFromUnreadable() {
   toast('Saving is back on.');
 }
 
-function setView(view, { focus = false } = {}) {
+function setView(route, { focus = false } = {}) {
+  // Routes: "#pipeline", "#calendar", … and "#plan/<guest id>".
+  let [view, arg] = String(route || '').split('/');
+  if (view === 'plan') {
+    ui.planGuestId = decodeURIComponent(arg || '');
+    if (!findGuest(ui.planGuestId)) view = 'pipeline';
+    else if (ui.selectedId) closePanel({ restore: false }); // the plan needs the room
+  }
   if (!VIEWS[view]) view = 'pipeline';
   ui.view = view;
   const meta = VIEWS[view];
@@ -220,6 +232,7 @@ function renderMain() {
   else if (ui.view === 'guests') renderGuests();
   else if (ui.view === 'templates') renderTemplates();
   else if (ui.view === 'settings') renderSettings();
+  else if (ui.view === 'plan') renderPlan();
 }
 
 /* ---------------------------------------------------------------- */
@@ -258,7 +271,7 @@ function guestCard(g) {
       )
     ),
     g.topic ? h('p', { class: 'card-topic' }, g.topic) : null,
-    hasNoRelease(g) ? h('p', { class: 'card-flags' }, noReleaseTag()) : null,
+    hasNoRelease(g) || qaStatus(g) !== 'not-sent' ? h('p', { class: 'card-flags' }, hasNoRelease(g) ? noReleaseTag() : null, qaStatus(g) !== 'not-sent' ? h('span', { class: `qa-chip qa-${qaStatus(g)}` }, QA_STATUS_LABELS[qaStatus(g)]) : null) : null,
     h('div', { class: 'card-meta' },
       h('span', null, cardWhen(g)),
       h('span', null, `${p.done}/${p.total} prep`)
@@ -513,6 +526,14 @@ function renderPanel() {
           h('button', { type: 'button', class: 'btn btn-quiet', id: 'panel-copy', dataset: { action: 'copy-email' } }, 'Copy email')
         ),
         g.email ? null : h('p', { class: 'hint', style: { margin: 0, fontSize: '13px' } }, 'No email address yet, so your mail app will ask who to send it to.')
+      ),
+
+      h('section', { class: 'panel-section', 'aria-labelledby': 'h-plan' },
+        h('div', { class: 'panel-section-head' },
+          h('h3', { class: 'section-label', id: 'h-plan' }, 'Episode plan & Q&A'),
+          h('span', { class: `qa-chip qa-${qaStatus(g)}` }, QA_STATUS_LABELS[qaStatus(g)])
+        ),
+        h('a', { class: 'btn btn-outline', href: `#plan/${encodeURIComponent(g.id)}` }, 'Open episode plan')
       ),
 
       h('section', { class: 'panel-section', 'aria-labelledby': 'h-danger' },
@@ -1076,6 +1097,286 @@ function initTemplates() {
 }
 
 /* ---------------------------------------------------------------- */
+/* Episode plan + guest Q&A                                          */
+/* ---------------------------------------------------------------- */
+
+/** Q&A link for a guest: carries their questions (capped to fit a URL). */
+function qaUrl(g) {
+  const qa = normalizeQa(g.qa);
+  const questions = qa.questions.length ? qa.questions : seedQuestions(state.settings.questionBank, { idFn: (() => { let i = 0; return () => `b${++i}`; })() });
+  const enc = encodeQuestions(questions);
+  return { url: buildIntakeUrl(pageUrl('qa.html'), state.settings, { slots: false, guest: g, extra: { qs: enc.param } }), dropped: enc.dropped };
+}
+
+/** Make sure the guest's questions are saved before a link goes out, and stamp "sent". */
+function prepareQa(g) {
+  const updated = markQaSent(g, state.settings.questionBank, nowIso());
+  saveGuest(updated, { main: false });
+  return updated;
+}
+
+const planGuest = () => findGuest(ui.planGuestId);
+
+function savePlan(g, plan, { rerender = false } = {}) {
+  saveGuest({ ...g, plan, updatedAt: nowIso() }, { main: false });
+  if (rerender) renderPlan();
+}
+
+function saveQa(g, qa, { rerender = false } = {}) {
+  saveGuest({ ...g, qa, updatedAt: nowIso() }, { main: false });
+  if (rerender) renderPlan();
+}
+
+function iconBtn(label, action, data, glyph, disabled) {
+  return h('button', { type: 'button', class: 'btn btn-quiet btn-icon', 'aria-label': label, title: label, dataset: { action, ...data }, disabled: !!disabled }, h('span', { 'aria-hidden': 'true' }, glyph));
+}
+
+function itemRows(list, kind, { minutes = false } = {}) {
+  const noun = kind === 'segments' ? 'Talking point' : 'On-air question';
+  return list.map((it, i) => h('li', { class: 'plan-item' },
+    h('span', { class: 'plan-num', 'aria-hidden': 'true' }, String(i + 1)),
+    h('label', { class: 'plan-text' }, h('span', { class: 'sr-only' }, `${noun} ${i + 1}`),
+      (() => { const t = h('textarea', { id: `${kind}-${it.id}-text`, rows: 2, dataset: { list: kind, item: it.id, prop: 'text' } }); t.value = it.text; return t; })()),
+    h('div', { class: 'plan-row2' },
+      minutes ? h('label', { class: 'plan-min' }, h('span', { class: 'hint', 'aria-hidden': 'true' }, 'Minutes'),
+        (() => { const m = h('input', { id: `${kind}-${it.id}-min`, type: 'number', min: '0', max: '600', inputmode: 'numeric', dataset: { list: kind, item: it.id, prop: 'minutes' }, 'aria-label': `Minutes for ${noun.toLowerCase()} ${i + 1}` }); m.value = it.minutes || ''; return m; })()) : h('span'),
+      h('div', { class: 'plan-tools' },
+        iconBtn(`Move ${noun.toLowerCase()} ${i + 1} up`, 'item-up', { list: kind, item: it.id }, '↑', i === 0),
+        iconBtn(`Move ${noun.toLowerCase()} ${i + 1} down`, 'item-down', { list: kind, item: it.id }, '↓', i === list.length - 1),
+        iconBtn(`Delete ${noun.toLowerCase()} ${i + 1}`, 'item-delete', { list: kind, item: it.id }, '×')
+      )
+    )
+  ));
+}
+
+function addRow(kind, label, { minutes = false } = {}) {
+  return h('div', { class: 'inline-add' },
+    h('label', { class: 'field' }, label, h('input', { id: `add-${kind}`, type: 'text', autocomplete: 'off' })),
+    minutes ? h('label', { class: 'field plan-min' }, 'Minutes', h('input', { id: `add-${kind}-min`, type: 'number', min: '0', max: '600', inputmode: 'numeric' })) : null,
+    h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'item-add', list: kind } }, 'Add')
+  );
+}
+
+function answeredLabel(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `Answered ${d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
+}
+
+function renderPlan() {
+  const view = $('#view-plan');
+  const g = planGuest();
+  if (!g) return;
+  const plan = normalizePlan(g.plan);
+  const qa = normalizeQa(g.qa);
+  const t = segmentTimings(plan.segments);
+  const status = qaStatus(g);
+  const link = qaUrl(g);
+  const title = h('input', { id: 'plan-title', type: 'text', dataset: { planField: 'title' }, autocomplete: 'off', placeholder: `Episode with ${displayName(g)}` });
+  title.value = plan.title;
+  const angle = h('textarea', { id: 'plan-angle', rows: 3, dataset: { planField: 'angle' } });
+  angle.value = plan.angle;
+
+  fill(view,
+    h('div', { class: 'plan-toolbar' },
+      h('a', { class: 'btn btn-quiet', href: '#pipeline' }, '← Back to pipeline'),
+      h('button', { type: 'button', class: 'btn btn-quiet', dataset: { openGuest: g.id } }, `Open ${displayName(g)}’s details`),
+      h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'print-sheet' } }, 'Print run sheet'),
+      h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'download-sheet' } }, 'Download run sheet (.txt)')
+    ),
+    h('div', { class: 'plan-grid' },
+      h('div', { class: 'plan-col' },
+        h('section', { class: 'surface', 'aria-labelledby': 'h-episode' },
+          h('h2', { id: 'h-episode' }, 'Episode'),
+          h('label', { class: 'field' }, 'Working title', title),
+          h('label', { class: 'field' }, 'Angle / summary', angle)
+        ),
+        h('section', { class: 'surface', 'aria-labelledby': 'h-segments' },
+          h('div', { class: 'panel-section-head' },
+            h('h2', { id: 'h-segments' }, 'Talking points'),
+            h('span', { class: 'mono plan-total', id: 'seg-total' }, `Total ${formatMinutes(t.total)}`)
+          ),
+          plan.segments.length ? h('ol', { class: 'plan-list' }, itemRows(plan.segments, 'segments', { minutes: true })) : h('p', { class: 'hint small' }, 'No talking points yet.'),
+          addRow('segments', 'New talking point', { minutes: true })
+        ),
+        h('section', { class: 'surface', 'aria-labelledby': 'h-air' },
+          h('h2', { id: 'h-air' }, 'Questions to ask on air'),
+          plan.airQuestions.length ? h('ol', { class: 'plan-list' }, itemRows(plan.airQuestions, 'airQuestions')) : h('p', { class: 'hint small' }, 'No on-air questions yet. Promote a guest answer or add your own.'),
+          addRow('airQuestions', 'New on-air question')
+        )
+      ),
+      h('div', { class: 'plan-col' },
+        h('section', { class: 'surface', 'aria-labelledby': 'h-qa' },
+          h('div', { class: 'panel-section-head' },
+            h('h2', { id: 'h-qa' }, 'Questions for the guest'),
+            h('span', { class: `qa-chip qa-${status}` }, QA_STATUS_LABELS[status])
+          ),
+          h('p', null, 'A short pre-interview questionnaire. Share the link and the answers arrive with “Check for new submissions”.'),
+          h('div', { class: 'btn-row' },
+            h('button', { type: 'button', class: 'btn btn-primary', dataset: { action: 'copy-qa' } }, 'Copy Q&A link'),
+            h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'email-qa' } }, 'Email the questions')
+          ),
+          link.dropped ? h('p', { class: 'note-warn' }, `${link.dropped} question${link.dropped === 1 ? '' : 's'} didn’t fit in the link and won’t be shown to the guest. Shorten or remove some questions.`) : null,
+          qa.questions.length
+            ? h('ol', { class: 'qa-list' }, qa.questions.map((q, i) => {
+              const a = qa.answers[q.id];
+              return h('li', { class: 'qa-item' },
+                h('div', { class: 'plan-item' },
+                  h('span', { class: 'plan-num', 'aria-hidden': 'true' }, String(i + 1)),
+                  h('label', { class: 'plan-text' }, h('span', { class: 'sr-only' }, `Question ${i + 1}`),
+                    (() => { const t2 = h('textarea', { id: `questions-${q.id}-text`, rows: 2, maxlength: String(QA_LIMITS.question), dataset: { list: 'questions', item: q.id, prop: 'text' } }); t2.value = q.text; return t2; })()),
+                  h('div', { class: 'plan-row2' }, h('span'),
+                    h('div', { class: 'plan-tools' },
+                      iconBtn(`Move question ${i + 1} up`, 'item-up', { list: 'questions', item: q.id }, '↑', i === 0),
+                      iconBtn(`Move question ${i + 1} down`, 'item-down', { list: 'questions', item: q.id }, '↓', i === qa.questions.length - 1),
+                      iconBtn(`Delete question ${i + 1}`, 'item-delete', { list: 'questions', item: q.id }, '×')
+                    ))
+                ),
+                a && a.text ? h('div', { class: 'qa-answer' },
+                  h('p', { class: 'qa-answer-meta mono' }, answeredLabel(a.answeredAt)),
+                  h('blockquote', null, a.text),
+                  h('div', { class: 'btn-row' },
+                    h('button', { type: 'button', class: 'btn btn-quiet btn-sm', dataset: { action: 'promote', target: 'segment', q: q.id }, 'aria-label': `Add the answer to question ${i + 1} as a talking point` }, '→ Talking point'),
+                    h('button', { type: 'button', class: 'btn btn-quiet btn-sm', dataset: { action: 'promote', target: 'air', q: q.id }, 'aria-label': `Add the answer to question ${i + 1} as an on-air question` }, '→ On-air question')
+                  )
+                ) : h('p', { class: 'hint small' }, status === 'not-sent' ? 'Not sent yet.' : 'No answer yet.')
+              );
+            }))
+            : h('p', { class: 'hint small' }, 'No questions yet.'),
+          addRow('questions', 'Add a custom question'),
+          h('div', { class: 'btn-row' },
+            h('button', { type: 'button', class: 'btn btn-quiet', dataset: { action: 'seed-questions' } }, qa.questions.length ? 'Add questions from the bank' : 'Use the question bank')
+          ),
+          qa.topics ? h('div', { class: 'qa-answer' },
+            h('h3', { class: 'section-label' }, 'Topics the guest would love to talk about'),
+            h('p', { class: 'qa-answer-meta mono' }, answeredLabel(qa.topicsAt)),
+            h('blockquote', null, qa.topics)
+          ) : null
+        )
+      )
+    )
+  );
+}
+
+function itemListFor(g, kind) {
+  if (kind === 'questions') return normalizeQa(g.qa).questions;
+  return normalizePlan(g.plan)[kind];
+}
+
+function saveItemList(g, kind, list, opts) {
+  if (kind === 'questions') return saveQa(g, { ...normalizeQa(g.qa), questions: list }, opts);
+  return savePlan(g, { ...normalizePlan(g.plan), [kind]: list }, opts);
+}
+
+function focusAfterRender(id) {
+  const el = document.getElementById(id);
+  if (el) el.focus();
+}
+
+function renderSheetForPrint(g) {
+  const sheet = runSheet(g, { showName: state.settings.showName, recordingLabel: g.recordingAt ? `${formatRecording(g.recordingAt)} (${tz()})` : '' });
+  const out = $('#print-sheet');
+  const section = (title, ...body) => h('section', null, h('h2', null, title), ...body);
+  fill(out,
+    h('p', { class: 'ps-show' }, sheet.show),
+    h('h1', null, sheet.title),
+    h('p', { class: 'ps-meta' }, `Guest: ${sheet.guest || '-'}${sheet.pronouns ? ` (${sheet.pronouns})` : ''}${sheet.role ? `, ${sheet.role}` : ''}`, sheet.recording ? h('br') : null, sheet.recording ? `Recording: ${sheet.recording}` : null),
+    sheet.angle ? section('Angle', h('p', null, sheet.angle)) : null,
+    sheet.intro ? section('Intro / bio', h('p', null, sheet.intro)) : null,
+    section(`Talking points (${formatMinutes(sheet.totalMinutes)})`,
+      sheet.segments.length ? h('ol', null, sheet.segments.map((x) => h('li', null, x.text, x.minutes ? h('span', { class: 'ps-time' }, ` ${x.minutes} min · ${x.start}–${x.end}`) : null))) : h('p', null, '-')),
+    section('On-air questions', sheet.airQuestions.length ? h('ol', null, sheet.airQuestions.map((q) => h('li', null, q.text))) : h('p', null, '-')),
+    section('Guest answers', sheet.answers.length ? h('dl', null, sheet.answers.map((a) => [h('dt', null, a.question), h('dd', null, a.answer)])) : h('p', null, '-')),
+    sheet.topics ? section('Topics the guest would love to talk about', h('p', null, sheet.topics)) : null
+  );
+  return sheet;
+}
+
+function initPlan() {
+  const view = $('#view-plan');
+  view.addEventListener('input', (e) => {
+    const g = planGuest();
+    if (!g) return;
+    const f = e.target.dataset.planField;
+    if (f) return savePlan(g, { ...normalizePlan(g.plan), [f]: e.target.value });
+    const { list, item, prop } = e.target.dataset;
+    if (!list || !item) return;
+    const updated = updateItem(itemListFor(g, list), item, { [prop]: e.target.value });
+    saveItemList(g, list, updated);
+    if (list === 'segments' && prop === 'minutes') $('#seg-total').textContent = `Total ${formatMinutes(segmentTimings(updated).total)}`;
+  });
+  view.addEventListener('keydown', (e) => {
+    // Enter in an "add" field adds the item.
+    if (e.key === 'Enter' && e.target.id?.startsWith('add-')) {
+      e.preventDefault();
+      const kind = e.target.id.replace(/^add-/, '').replace(/-min$/, '');
+      view.querySelector(`[data-action="item-add"][data-list="${kind}"]`)?.click();
+    }
+  });
+  view.addEventListener('click', async (e) => {
+    const open = e.target.closest('[data-open-guest]');
+    if (open) return openGuest(open.dataset.openGuest);
+    const btn = e.target.closest('[data-action]');
+    const g = planGuest();
+    if (!btn || !g) return;
+    const { action, list, item } = btn.dataset;
+    if (action === 'item-add') {
+      const input = $(`#add-${list}`);
+      const text = input.value.trim();
+      if (!text) { toast('Type something to add first.'); input.focus(); return; }
+      const min = $(`#add-${list}-min`);
+      const next = addItem(itemListFor(g, list), text, { idFn: () => `${list[0]}${Date.now().toString(36)}`, minutes: min ? min.value : undefined });
+      saveItemList(g, list, next, { rerender: true });
+      focusAfterRender(`add-${list}`);
+      toast('Added.');
+    } else if (action === 'item-up' || action === 'item-down') {
+      saveItemList(g, list, moveItem(itemListFor(g, list), item, action === 'item-up' ? -1 : 1), { rerender: true });
+      const again = view.querySelector(`[data-action="${action}"][data-item="${cssId(item)}"]`);
+      (again && !again.disabled ? again : document.getElementById(`${list}-${item}-text`))?.focus();
+    } else if (action === 'item-delete') {
+      const current = itemListFor(g, list);
+      const idx = current.findIndex((x) => x.id === item);
+      saveItemList(g, list, removeItem(current, item), { rerender: true });
+      const rest = itemListFor(planGuest(), list);
+      focusAfterRender(rest.length ? `${list}-${rest[Math.min(idx, rest.length - 1)].id}-text` : `add-${list}`);
+      toast('Deleted.');
+    } else if (action === 'promote') {
+      const updated = promoteAnswer(g, btn.dataset.q, btn.dataset.target, { idFn: () => `p${Date.now().toString(36)}`, nowIso: nowIso() });
+      saveGuest(updated, { main: false });
+      renderPlan();
+      view.querySelector(`[data-action="promote"][data-q="${cssId(btn.dataset.q)}"][data-target="${btn.dataset.target}"]`)?.focus();
+      toast(btn.dataset.target === 'air' ? 'Added to on-air questions.' : 'Added to talking points.');
+    } else if (action === 'seed-questions') {
+      const qa = normalizeQa(g.qa);
+      const have = new Set(qa.questions.map((q) => q.text.trim().toLowerCase()));
+      const fresh = seedQuestions(state.settings.questionBank).filter((q) => !have.has(q.text.trim().toLowerCase()));
+      const room = QA_LIMITS.questions - qa.questions.length;
+      saveQa(g, { ...qa, questions: [...qa.questions, ...fresh.slice(0, Math.max(0, room))] }, { rerender: true });
+      $('[data-action="seed-questions"]')?.focus();
+      toast(fresh.length ? `Added ${Math.min(fresh.length, room)} question${fresh.length === 1 ? '' : 's'} from the bank.` : 'Every bank question is already on the list.');
+    } else if (action === 'copy-qa') {
+      const updated = prepareQa(g);
+      const link = qaUrl(updated);
+      renderPlan();
+      $('[data-action="copy-qa"]')?.focus();
+      toast((await copyText(link.url)) ? 'Q&A link copied.' : 'Could not copy the link.');
+    } else if (action === 'email-qa') {
+      const updated = prepareQa(g);
+      renderPlan();
+      window.location.href = templateMailto(updated, 'qa');
+    } else if (action === 'print-sheet') {
+      renderSheetForPrint(g);
+      window.print();
+    } else if (action === 'download-sheet') {
+      const sheet = renderSheetForPrint(g);
+      const safe = displayName(g).replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'guest';
+      download(`run-sheet-${safe}.txt`, runSheetToText(sheet), 'text/plain;charset=utf-8');
+      toast('Run sheet downloaded.');
+    }
+  });
+}
+
+/* ---------------------------------------------------------------- */
 /* Settings                                                          */
 /* ---------------------------------------------------------------- */
 
@@ -1164,6 +1465,15 @@ function renderSettings() {
       ),
 
       backendSection(),
+
+      h('section', { class: 'surface span-2', 'aria-labelledby': 'h-bank' },
+        h('h2', { id: 'h-bank' }, 'Q&A question bank'),
+        h('p', null, `Default pre-interview questions. A guest’s episode plan starts from these, and you can edit them per guest. One question per line, up to ${QA_LIMITS.questions}.`),
+        h('label', { class: 'field' }, 'Questions',
+          (() => { const t = h('textarea', { id: 'set-bank', rows: 8, 'aria-describedby': 'bank-count' }); t.value = s.questionBank.join('\n'); return t; })(),
+          h('span', { class: 'hint', id: 'bank-count' }, `${s.questionBank.length} question${s.questionBank.length === 1 ? '' : 's'}`)
+        )
+      ),
 
       h('section', { class: 'surface span-2', 'aria-labelledby': 'h-data' },
         h('h2', { id: 'h-data' }, 'Backup and data'),
@@ -1337,6 +1647,10 @@ function initSettings() {
         updateSettings({ intakeEndpoint: url });
         syncHeadCheck();
       }
+    } else if (e.target.id === 'set-bank') {
+      const bank = normalizeQuestionBank(e.target.value.split('\n'));
+      updateSettings({ questionBank: bank });
+      $('#bank-count').textContent = `${bank.length} question${bank.length === 1 ? '' : 's'}${e.target.value.split('\n').filter((l) => l.trim()).length > bank.length ? ` (only the first ${QA_LIMITS.questions} are used)` : ''}`;
     } else if (e.target.id === 'set-readkey') {
       sync = { ...sync, readKey: e.target.value.trim() };
       saveSync(sync);
@@ -1537,6 +1851,7 @@ function init() {
   initCalendar();
   initTemplates();
   initSettings();
+  initPlan();
   initAddDialog();
 
   search.addEventListener('input', () => {
