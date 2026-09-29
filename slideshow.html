@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html class="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -7,22 +7,38 @@
   <meta name="description" content="A fun activity for learning Git and GitHub.">
   <meta name="author" content="GitHubTeacher">
 
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/css/reset.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/css/reveal.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/css/theme/moon.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/lib/css/monokai.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/css/reset.css" integrity="sha384-AJKv9Ui5SfA0VsFksFI9GuA1ztX9Ca3CLP6HGfX4YY/tYSVodC+PUszaQZFIlkuy" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/css/reveal.css" integrity="sha384-vnVadaLG+I1mtIwUl+nyxGxFabcChUXrMCO7R9FtvZyOg19llUk9vNRB3vU1p4Ya" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/css/theme/moon.css" integrity="sha384-QeCLehtzjlH8b2zvJN4v8zioQstobgMzRTg+Nrk9damHJfWrYkweQu3HBVYkFrsm" crossorigin="anonymous">
+  <!-- Theme used for syntax highlighting of code -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/lib/css/monokai.css" integrity="sha384-0rrWATPYzlkqxkUhsXu1QkrO6K3rq4d6FqJQhcCJ7jQcZhb6plkpODMjpoiAYidE" crossorigin="anonymous">
+
+  <!-- Printing and PDF exports (open the page with ?print-pdf to export) -->
+  <script>
+    (function () {
+      var pdf = /print-pdf/i.test(window.location.search);
+      var link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.crossOrigin = 'anonymous';
+      link.href = 'https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/css/print/' + (pdf ? 'pdf.css' : 'paper.css');
+      link.integrity = pdf
+        ? 'sha384-DYJN4TwW5w9QMAovlfCVIsq9mlGRy7XGOndizpp5h+s2SI4Iyp0VfMyC83K2Lt1f'
+        : 'sha384-zHjMyaMaqTkiXWJlw31itlzU5C8jZ+5PYxNUli7eVles7aZ1CDp64ySGwbMDWMCU';
+      document.head.appendChild(link);
+    })();
+  </script>
 </head>
 <body>
   <div class="reveal">
     <div class="slides">
 
-      <section class="step slide">
+      <section>
         <h1>Welcome to our slide deck!</h1>
         <p>Use the right arrow to begin!</p>
       </section>
 
       <!-- Add more slides by copying a <section> block above, e.g.:
-      <section class="step slide">
+      <section>
         <h1>Slide title</h1>
         <p>Slide content</p>
       </section>
@@ -31,7 +47,12 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/js/reveal.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/js/reveal.js" integrity="sha384-azyqbBSNSbYLFmjDgdAy0c+mD2eqEnYgdNTb+wCyzeYT6e7WoIpXZTxo/IXxA7SM" crossorigin="anonymous"></script>
+  <!-- Plugins register themselves with Reveal when loaded -->
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/plugin/markdown/marked.js" integrity="sha384-u2O8jb89lBo5pGXgged8fK4+gcEWezWb2GX7QelolQQKSt3Nqf5ksgEcCuhzzNWa" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/plugin/markdown/markdown.js" integrity="sha384-i7iD/9KpM6IY6xJJNGoSIrouBOHrY+MlPfouFawgo8brUm3KDVov7rTvnpQil+Js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/plugin/highlight/highlight.js" integrity="sha384-gL7OiDRI5keD1BPNBUl4sL4CJbSXPD+RqTOp/VElRhL+j1QE8J0zPeZnq8ZkD786" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/plugin/notes/notes.js" integrity="sha384-CgkyZwrAiV2FiBKEuaLnuHYqiX5N4UwoluVts15JZjLvCSqFH5JHJ3YLquMIzykk" crossorigin="anonymous"></script>
   <script>
     Reveal.initialize({
       hash: true,
@@ -51,14 +72,27 @@
       height: 920,
       margin: 0.1,
       minScale: 0.2,
-      maxScale: 1.5,
-      dependencies: [
-        { src: 'https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/plugin/markdown/marked.js' },
-        { src: 'https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/plugin/markdown/markdown.js' },
-        { src: 'https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/plugin/highlight/highlight.js' },
-        { src: 'https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/plugin/notes/notes.js', async: true }
-      ]
+      maxScale: 1.5
     });
+
+    // Speaker notes (press S). The CDN serves notes.html as plain text, so fetch it
+    // ahead of time and open it from a same-origin blob URL instead.
+    (function () {
+      var base = 'https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/plugin/notes/';
+      var notesUrl = null;
+      fetch(base + 'notes.html', { integrity: 'sha384-SHKvMU/KFuzgmZxcD7GF8PY589LGVpltjPa04fDWeEpyEYlQJVwaYmYAQtnEw9DE' })
+        .then(function (res) { return res.text(); })
+        .then(function (html) {
+          html = html
+            .replace('<head>', '<head><base href="' + base + '">')
+            .replace('<script src="../../plugin/markdown/marked.js">',
+              '<script src="../../plugin/markdown/marked.js" integrity="sha384-u2O8jb89lBo5pGXgged8fK4+gcEWezWb2GX7QelolQQKSt3Nqf5ksgEcCuhzzNWa" crossorigin="anonymous">');
+          notesUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+        });
+      Reveal.addKeyBinding({ keyCode: 83, key: 'S', description: 'Speaker notes view' }, function () {
+        if (notesUrl) RevealNotes.open(notesUrl);
+      });
+    })();
   </script>
 </body>
 </html>
