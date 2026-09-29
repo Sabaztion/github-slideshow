@@ -114,5 +114,6 @@ exclude: [
   "reveal.js/LICENSE",
   "reveal.js/package.json",
   "guest-manager/README.md",
-  "guest-manager/tests"
+  "guest-manager/tests",
+  "guest-manager/backend"
 ]

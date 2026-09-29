@@ -16,13 +16,13 @@ A small, self-contained web app for running a podcast's guest pipeline, from fir
   - `{{episode_link}}`
 
   From a guest's panel, pick a template to see it filled in. Then use **Open in email app** (a prefilled `mailto:` link) or **Copy email**.
-- **Guest intake form** (`intake.html`). Guests enter their details, pick recording times, choose a recording setup and agree to the release. See the limitation below.
+- **Guest intake form** (`intake.html`). Guests enter their details, pick recording times, upload a headshot, choose a recording setup and agree to the release. With the backend connected, answers reach you directly (see below).
 - **Settings.** Show name, host time zone (used for recording times, templates and the intake form), optional host email, the times offered on the intake form, and a shareable intake link.
 - **Sample data.** On first run a few guests marked "Sample" are added so there is something to explore. **Clear sample data** (on the banner or in Settings) removes only those.
 
 ## Where your data lives
 
-Everything is stored in your browser's `localStorage` under the key `podcast-guest-manager:v1`. Nothing is sent anywhere. That means:
+Everything is stored in your browser's `localStorage` under the key `podcast-guest-manager:v1`. Nothing is sent anywhere unless you connect the optional backend below (then only guest pages send their answers to your own Google Sheet). That means:
 
 - Data is per browser and per device. Another browser, or a private window, starts empty.
 - Clearing site data deletes it. Use **Settings → Export JSON** regularly for a backup, and **Import JSON** to restore it or move it to another browser. Import replaces the current data after asking you first.
@@ -30,16 +30,30 @@ Everything is stored in your browser's `localStorage` under the key `podcast-gue
 - If the stored data exists but can't be read (for example it was written by a newer version, or got truncated), it is **never overwritten**. The app copies it to a backup key (`podcast-guest-manager:v1:corrupt-<timestamp>`), shows a warning banner with **Download raw data**, and runs on sample data in memory without saving. **Start fresh** turns saving back on (the backup key stays). The intake form also refuses to save into an unreadable guest list; guests can still copy or email their answers.
 - **On GitHub Pages, storage is shared by every site on the same origin.** Every project site under `https://<user>.github.io/` shares one `localStorage`, so any other page published there can read this app's data. For real guest data, serve the app from its own origin: a custom domain or subdomain (for example `guests.example.com`), or at least a GitHub account/organization whose `github.io` site hosts nothing else.
 
-## The intake form has no backend
+## Connect the intake form (free Google Sheet backend)
 
-There is no server, so **a guest's submission does not reach you automatically.** When the form is submitted:
+Without a backend, a guest's answers stay in their own browser. The app ships a small [Google Apps Script](https://developers.google.com/apps-script) web app, `backend/Code.gs`, that stores submissions in a Google Sheet you own. It costs nothing and needs no server, build step or npm packages.
 
-1. The guest is saved into **this browser's** guest list (in the Outreach column, with the offered times, bio, setup and notes). This is useful when the host fills in the form with the guest, for example on a call, or when testing.
-2. The form shows the answers as plain text with **Copy as text** and **Open in email app** buttons. A remote guest on their own device must send those answers to you by email. If you set a host email in Settings and share the link from Settings, **Open in email app** is addressed to you.
+1. **Create a Sheet.** Go to [sheets.new](https://sheets.new) and name it, for example "Guest intake".
+2. **Paste the code.** In the Sheet, open **Extensions → Apps Script**. Delete the sample code, paste all of `guest-manager/backend/Code.gs`, set `SHOW_NAME` near the top, and save.
+3. **Run `setup()`.** Pick `setup` in the function menu and press **Run**. Approve the permissions (Sheets, and Drive for headshots). It creates the `Submissions`, `Availability` and `QA` sheets, a Drive folder called "*Show name* guest headshots", and a random **read key**.
+4. **Copy the read key.** Open **Executions** (or View → Logs) and copy the key that `setup()` logged. It is stored in **Project Settings → Script Properties** as `READ_KEY`, so you can also copy it from there or set your own there (at least 16 characters).
+5. **Deploy.** **Deploy → New deployment**, type **Web app**, *Execute as:* **Me**, *Who has access:* **Anyone**. Copy the web app URL (`https://script.google.com/macros/s/…/exec`).
+6. **Connect the app.** In the guest manager go to **Settings → Intake backend**, paste the URL into **Intake endpoint URL** and the key into **Read key**, then press **Test connection**.
+7. **Share the link.** **Settings → Guest intake form → Copy link.** The link now includes your endpoint URL (never the key), so the form posts answers to your Sheet.
+8. **Import.** Press **Check for new submissions** (on the pipeline header or in Settings). New guests land in **Outreach** with their offered times, bio, links, headshot link and notes. A submission from someone already on your list (same email) is merged into that guest instead of creating a duplicate, and checking twice never imports the same submission twice. With "Check when the app opens" ticked this happens automatically.
 
-The headshot upload keeps only the file name. Guests are asked to attach the photo to their email.
+Optional: add a Script Property `NOTIFY_EMAIL` to get an email for each new submission. After editing `Code.gs`, publish it with **Deploy → Manage deployments → Edit → Version: New version** (the URL stays the same).
 
-**Sharing the form.** Settings → Guest intake form → **Copy link** gives a URL like `intake.html?show=…&tz=…&to=…&slots=…`. It carries your show name, time zone, email and offered times, so a remote guest sees the right details even though their browser has none of your data. Times are shown in the host's time zone, and the form says which one.
+**How guest pages send.** The form POSTs JSON with `Content-Type: text/plain`, which avoids a CORS preflight that Apps Script can't answer. A chosen headshot is resized in the browser to at most 1000 × 1000 px JPEG and sent with the answers (1.5 MB at most); the script saves it to the Drive folder, private to you, and stores its link. If there is no endpoint or sending fails, the form says so, keeps a **Try sending again** button, and falls back to the old behavior: it saves the answers in that browser and offers **Copy as text** and **Open in email app**.
+
+### Security notes
+
+- **The endpoint is public for writes.** Anyone with the URL can submit, which is what lets guests reach you. The script validates every field, limits lengths and the total size, rate-limits each email address (5 per 10 minutes) and all submissions (60 per minute) with `CacheService`, and silently drops submissions that fill the hidden honeypot field. Text that starts with `=`, `+`, `-` or `@` is stored as text so it can't run as a Sheets formula.
+- **Reading needs the read key.** `GET ?action=list&key=…` only returns data when the key matches `READ_KEY`. Without it, or with a wrong key, the endpoint only answers `{"ok":true,"service":"guest-intake"}`. The key stays in your browser's storage (a separate key, not included in Export JSON) and is never put in a share link. It does travel in the list request's URL over HTTPS, so treat it like a password.
+- **Server-side identity.** The show name and the notification address come from the script's own settings, never from the request, so a crafted link can't redirect notifications. A share link's `api` value only chooses where the guest's answers are posted; the page tells guests they go to the show's own Sheet.
+- **Rotate the key** if it leaks: run `rotateReadKey()` in Apps Script (the old key stops working at once) and paste the new key into Settings. To cut off writes too, archive the deployment and create a new one, then share the new link.
+- Only `http(s)` values ever become links in the app, and all guest text is rendered as text, never as HTML.
 
 ## Time zones
 
@@ -58,7 +72,7 @@ Any static file server works.
 
 ## Tests
 
-The pure logic (stage transitions, checklist progress, template rendering and `mailto:` building, sorting and filtering, date grouping and the month grid, storage serialization and import validation, intake conversion) lives in `js/logic.js`. It is covered by unit tests that use Node's built-in test runner, with no packages needed:
+The pure logic (stage transitions, checklist progress, template rendering and `mailto:` building, sorting and filtering, date grouping and the month grid, storage serialization and import validation, intake conversion) lives in `js/logic.js`, with the backend, availability and episode-plan logic in `js/remote.js`, `js/slots.js` and `js/plan.js`. `tests/backend.test.js` loads `backend/Code.gs` in a Node `vm` with stubbed Apps Script services to test its validation, honeypot, rate limit, storage and read-key check. Everything is covered by unit tests that use Node's built-in test runner, with no packages needed:
 
 ```sh
 node --test guest-manager/tests/
@@ -77,6 +91,12 @@ This needs Node 18 or later. On Node 22 a directory argument loads `tests/index.
 | `js/store.js` | `localStorage` wrapper (every access guarded) |
 | `js/app.js` | Main app UI |
 | `js/intake.js` | Intake form UI |
+| `js/guest-page.js` | Shared helpers for guest pages (status, copy, photo resizing) |
+| `js/remote.js` | Pure logic for the backend: payloads, validation, importing and merging submissions |
+| `js/api.js` | `fetch` calls to the Apps Script web app |
+| `js/slots.js` | Pure availability logic: time zones, week grid, ranges |
+| `js/plan.js` | Pure episode plan and Q&A logic |
+| `backend/Code.gs` | Google Apps Script backend (not published with the site) |
 | `tests/` | `node:test` unit tests |
 
 ## Accessibility
@@ -85,4 +105,4 @@ The app uses real buttons, links and labels throughout. Every control is keyboar
 
 ## Jekyll / GitHub Pages note
 
-This repository is a Jekyll site. Jekyll copies files without front matter (all the HTML, CSS and JS here) to the built site verbatim, so Liquid never touches the `{{…}}` template placeholders in the JavaScript. This was checked with a local `jekyll build`: every app file came out byte-for-byte identical. `_config.yml` also excludes `guest-manager/README.md` and `guest-manager/tests` from the published site. They aren't needed at runtime, and excluding them means no Markdown with placeholders ever goes through Liquid.
+This repository is a Jekyll site. Jekyll copies files without front matter (all the HTML, CSS and JS here) to the built site verbatim, so Liquid never touches the `{{…}}` template placeholders in the JavaScript. This was checked with a local `jekyll build`: every app file came out byte-for-byte identical. `_config.yml` also excludes `guest-manager/README.md`, `guest-manager/tests` and `guest-manager/backend` from the published site. They aren't needed at runtime, and excluding them means no Markdown with placeholders ever goes through Liquid.
