@@ -1089,3 +1089,82 @@ fieldset.group legend { padding: 0; margin-bottom: 4px; font-size: 13px; font-we
    (e.g. .sr-only text) stay inside them instead of widening the page. */
 .board, .column, .col-list, .table-wrap, .nav-list, .panel, .panel-scroll, .main { position: relative; }
 @media (max-width: 1179px) { .panel { position: fixed; } }
+
+/* ---------------------------------------------------------------- */
+/* Availability calendar (availability.html)                         */
+/* ---------------------------------------------------------------- */
+
+.intake-wide { max-width: 1040px; }
+.week-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.week-bar h2 { flex: 1 1 200px; margin: 0; font-family: var(--display); font-size: 20px; font-weight: 700; text-align: center; }
+.avail-wrap {
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  overscroll-behavior: contain;
+}
+.avail-grid { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; min-width: 520px; }
+.avail-grid th { position: sticky; z-index: 2; background: var(--soft); font-weight: 600; }
+.avail-grid thead th { top: 0; padding: 8px 4px; border-bottom: 1px solid var(--line); font-size: 13px; text-align: center; }
+.avail-grid thead th .wd, .avail-grid thead th .md { display: block; }
+.avail-grid thead th .md { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--muted); }
+.avail-grid thead th:first-child { left: 0; z-index: 3; width: 76px; }
+.avail-grid tbody th { left: 0; width: 76px; padding: 0 8px; border-right: 1px solid var(--line); font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--muted); text-align: right; vertical-align: top; }
+.avail-grid td { padding: 0; border-right: 1px solid var(--soft-line); }
+.avail-grid tr:nth-child(odd) td { border-top: 1px solid var(--line); }
+.avail-grid td:last-child { border-right: 0; }
+.cell {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--surface);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.cell:hover { background: var(--chip); }
+.cell[aria-pressed="true"] { background: var(--ink); }
+.cell[aria-pressed="true"]::after { content: '✓'; color: #FFFFFF; font-size: 14px; font-weight: 600; }
+.cell[aria-disabled="true"] {
+  cursor: not-allowed;
+  background: repeating-linear-gradient(135deg, #F3EFE6 0 6px, #E9E4D8 6px 12px);
+}
+.cell:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; position: relative; z-index: 1; }
+.avail-summary { display: flex; flex-direction: column; gap: 8px; }
+.range-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-family: var(--mono); font-size: 13px; }
+.range-list li:not(.hint) { padding: 8px 12px; border-radius: 8px; background: var(--soft); }
+@media (max-width: 760px) {
+  .avail-grid thead th:first-child, .avail-grid tbody th { width: 56px; padding: 0 4px; }
+}
+
+/* Availability in the guest panel and calendar overlay */
+.range-book { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.range-book li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--soft-line); border-radius: 10px; }
+.range-label { font-family: var(--mono); font-size: 12px; }
+.range-actions { display: flex; align-items: center; gap: 8px; }
+.range-start { min-height: 44px; padding: 0 8px; border: 1px solid var(--control-line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; }
+.cal-avail { flex-direction: row; align-items: center; gap: 8px; font-size: 13px; }
+.cal-avail select { width: auto; }
+.cal-free {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 4px 8px;
+  border: 1.5px dashed var(--ink-2);
+  border-radius: 6px;
+  background: repeating-linear-gradient(135deg, #FFFFFF 0 6px, #F3EFE6 6px 12px);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.cal-free .t { font-family: var(--mono); font-size: 11px; font-weight: 500; }
+.cal-free .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }

@@ -290,6 +290,17 @@ form.addEventListener('submit', async (e) => {
   else showSent(a);
 });
 
+// "Pick your times on a calendar" keeps the share link's settings and carries
+// over what the guest has typed so far.
+$('#calendar-link').addEventListener('click', () => {
+  const q = new URLSearchParams(window.location.search);
+  for (const k of ['slots', 'gid']) q.delete(k);
+  const f = form.elements;
+  if (f.name.value.trim()) q.set('name', f.name.value.trim());
+  if (f.email.value.trim()) q.set('email', f.email.value.trim());
+  $('#calendar-link').href = `availability.html${q.toString() ? `?${q}` : ''}`;
+});
+
 $('#retry-send').addEventListener('click', async () => {
   if (sending || !lastAnswers) return;
   sending = true;

@@ -5,11 +5,12 @@ import {
   sortGuests, formatRecording, formatDay, formatTime, nowInZone, isValidTimeZone, shiftMonth,
   monthLabel, monthGrid, groupByDay, WEEKDAY_NAMES, renderEmail, buildMailto, serializeState,
   parseState, upsertGuest, removeGuest, clearSamples, hasSamples, createInitialState, suggestSlots,
-  parseLocal, toLocalString, buildIntakeUrl, countByStage, isValidEmail, softUrlWarning, hasNoRelease
+  parseLocal, toLocalString, buildIntakeUrl, countByStage, isValidEmail, softUrlWarning, hasNoRelease, bookSlot
 } from './logic.js';
 import { loadState, loadStoredState, saveState, browserTimeZone, STORAGE_KEY, unreadableData, releaseUnreadable, loadSync, saveSync } from './store.js';
 import { normalizeEndpoint, safeHttpUrl } from './logic.js';
 import { applySubmissions, importSummary, sinceFor } from './remote.js';
+import { upcomingRanges, rangesByDay, formatRange, SLOT_MINUTES } from './slots.js';
 import { checkHealth, fetchSubmissions } from './api.js';
 
 /* ---------------------------------------------------------------- */
@@ -376,9 +377,51 @@ function fieldControl(g, f) {
   return h('label', { class: `field${f.span ? ' span-2' : ''}` }, h('span', null, f.label, f.hint ? h('span', { class: 'hint' }, ` ${f.hint()}`) : null), control);
 }
 
+/**
+ * Times the guest marked on the availability calendar, merged into ranges.
+ * Each range can be booked at any of its half-hour starts.
+ */
+function freeTimesSection(g) {
+  const ranges = upcomingRanges(g.freeSlots, nowInZone(tz()));
+  return h('section', { class: 'panel-section', 'aria-labelledby': 'h-free' },
+    h('div', { class: 'panel-section-head' },
+      h('h3', { class: 'section-label', id: 'h-free' }, 'Availability calendar'),
+      g.freeSlots.length ? h('span', { class: 'mono' }, `${ranges.length} range${ranges.length === 1 ? '' : 's'}`) : null
+    ),
+    ranges.length
+      ? h('ul', { class: 'range-book' }, ranges.map((r, i) => {
+        const id = `free-${i}`;
+        return h('li', null,
+          h('span', { class: 'range-label', id: `${id}-label` }, formatRange(r)),
+          h('div', { class: 'range-actions' },
+            r.slots.length > 1
+              ? h('label', null, h('span', { class: 'sr-only' }, `Start time for ${formatRange(r)}`),
+                h('select', { id: `${id}-start`, class: 'range-start' }, r.slots.map((s) => h('option', { value: s, selected: s === g.recordingAt }, formatTime(s)))))
+              : null,
+            h('button', { type: 'button', class: 'btn btn-quiet btn-sm', dataset: { action: 'book-range', range: String(i), first: r.slots[0] }, 'aria-describedby': `${id}-label` },
+              g.recordingAt && r.slots.includes(g.recordingAt) ? 'Booked · change' : 'Book')
+          )
+        );
+      }))
+      : h('p', { class: 'hint', style: { margin: 0, fontSize: '13px' } }, g.freeSlots.length ? 'The times this guest marked have passed.' : 'No calendar times yet. Send the guest your availability link.'),
+    h('div', { class: 'btn-row' },
+      h('button', { type: 'button', class: 'btn btn-outline btn-sm', dataset: { action: 'copy-availability' } }, 'Copy availability link'),
+      h('a', { class: 'btn btn-quiet btn-sm', id: 'panel-avail-mail', href: templateMailto(g, 'availability') }, 'Email availability request')
+    )
+  );
+}
+
+/** mailto: for one of the templates, filled in for this guest. */
+function templateMailto(g, templateId) {
+  const tpl = state.templates.find((t) => t.id === templateId);
+  if (!tpl) return buildMailto(g.email);
+  const mail = renderEmail(tpl, g, state.settings, guestLinks(g));
+  return buildMailto(g.email, mail.subject, mail.body);
+}
+
 function panelEmail(g) {
   const tpl = state.templates.find((t) => t.id === ui.panelTemplateId) || state.templates[0];
-  const email = renderEmail(tpl, g, state.settings);
+  const email = renderEmail(tpl, g, state.settings, guestLinks(g));
   return { tpl, ...email, href: buildMailto(g.email, email.subject, email.body) };
 }
 
@@ -426,6 +469,8 @@ function renderPanel() {
           ? h('p', { class: 'panel-note' }, 'Headshot: ', h('a', { href: safeHttpUrl(g.headshot), target: '_blank', rel: 'noopener noreferrer' }, 'Open photo ↗'))
           : g.headshot ? h('p', { class: 'panel-note hint' }, `Headshot file named “${g.headshot}” (not uploaded).`) : null
       ),
+
+      freeTimesSection(g),
 
       g.availability.length ? h('section', { class: 'panel-section', 'aria-labelledby': 'h-avail' },
         h('h3', { class: 'section-label', id: 'h-avail' }, 'Times the guest offered'),
@@ -642,6 +687,15 @@ function initPanel() {
       closePanel({ restore: false });
       $('#view-title').focus();
       toast(`Deleted ${displayName(g)}.`);
+    } else if (action === 'book-range') {
+      const sel = $(`#free-${btn.dataset.range}-start`);
+      const slot = sel ? sel.value : btn.dataset.first;
+      saveGuest(bookSlot(g, slot, nowIso()));
+      renderPanel();
+      $('#f-recordingAt').focus();
+      toast(`Booked ${displayName(g)} for ${formatRecording(slot)}.`);
+    } else if (action === 'copy-availability') {
+      toast((await copyText(availabilityUrl(g))) ? `Availability link for ${displayName(g)} copied.` : 'Could not copy the link.');
     } else if (action === 'book-slot') {
       let updated = updateGuestField(g, 'recordingAt', btn.dataset.slot, nowIso());
       if (updated.stage === 'outreach') updated = moveGuest(updated, 'booked', nowIso());
@@ -778,10 +832,16 @@ function renderCalendar() {
   const weeks = monthGrid(year, month, 0);
   const inMonthCount = weeks.flat().filter((c) => c.inMonth && groups[c.ymd]).reduce((n, c) => n + groups[c.ymd].length, 0);
   const unscheduled = sortGuests(state.guests.filter((g) => g.stage === 'booked' && !g.recordingAt), 'name');
+  // Optional overlay: one guest's free times from the availability calendar.
+  const withFree = sortGuests(state.guests.filter((g) => g.freeSlots.length), 'name');
+  if (ui.calAvail === undefined && findGuest(ui.selectedId)?.freeSlots.length) ui.calAvail = ui.selectedId;
+  const overlayGuest = withFree.find((g) => g.id === ui.calAvail) || null;
+  const free = overlayGuest ? rangesByDay(overlayGuest.freeSlots) : {};
 
   const cell = (c) => {
     const events = groups[c.ymd] || [];
-    const cls = [c.inMonth ? '' : 'out', events.length ? 'has-events' : 'no-events'].filter(Boolean).join(' ');
+    const frees = free[c.ymd] || [];
+    const cls = [c.inMonth ? '' : 'out', events.length || frees.length ? 'has-events' : 'no-events'].filter(Boolean).join(' ');
     return h('td', { class: cls, 'aria-current': c.ymd === today ? 'date' : null },
       h('span', { class: 'cal-date' },
         h('span', { class: 'num', 'aria-hidden': 'true' }, String(c.day)),
@@ -794,7 +854,12 @@ function renderCalendar() {
           h('span', { class: 'n' }, displayName(g)),
           h('span', { class: 'sr-only' }, `, ${s.label}`)
         ));
-      })) : null
+      })) : null,
+      frees.length ? h('ul', { class: 'cal-events' }, frees.map((r) => h('li', null,
+        h('button', { type: 'button', class: 'cal-free', dataset: { openGuest: overlayGuest.id } },
+          h('span', { class: 't' }, `${formatTime(r.start)}–${formatTime(r.end)}`),
+          h('span', { class: 'n' }, `${displayName(overlayGuest)} free`)
+        )))) : null
     );
   };
 
@@ -804,6 +869,10 @@ function renderCalendar() {
       h('h2', { id: 'cal-label', 'aria-live': 'polite' }, monthLabel(year, month)),
       h('button', { type: 'button', class: 'btn btn-quiet btn-icon', id: 'cal-next', dataset: { cal: '1' }, 'aria-label': 'Next month' }, icon('next')),
       h('button', { type: 'button', class: 'btn btn-quiet', id: 'cal-today', dataset: { cal: 'today' } }, 'Today'),
+      withFree.length ? h('label', { class: 'field cal-avail' }, 'Show availability for',
+        h('select', { id: 'cal-avail' },
+          h('option', { value: '' }, 'No one'),
+          withFree.map((g) => h('option', { value: g.id, selected: overlayGuest?.id === g.id }, displayName(g))))) : null,
       h('div', { class: 'cal-legend', 'aria-label': 'Stage colours' }, STAGES.filter((s) => s.id !== 'outreach').map((s) => stagePill(s.id)))
     ),
     h('table', { class: 'cal' },
@@ -820,6 +889,12 @@ function renderCalendar() {
 }
 
 function initCalendar() {
+  $('#view-calendar').addEventListener('change', (e) => {
+    if (e.target.id !== 'cal-avail') return;
+    ui.calAvail = e.target.value;
+    renderCalendar();
+    $('#cal-avail').focus();
+  });
   $('#view-calendar').addEventListener('click', (e) => {
     const nav = e.target.closest('[data-cal]');
     if (nav) {
@@ -849,7 +924,8 @@ function previewGuest() {
 
 function renderTemplatePreview() {
   const t = state.templates.find((x) => x.id === ui.templateId);
-  const mail = renderEmail(t, previewGuest(), state.settings);
+  const pg = previewGuest();
+  const mail = renderEmail(t, pg, state.settings, guestLinks(pg));
   $('#tpl-preview').replaceChildren(h('strong', null, mail.subject), mail.body);
 }
 
@@ -972,11 +1048,27 @@ function timeZoneOptions(current) {
   return [...new Set(['UTC', browserTimeZone(), current, ...zones])].filter(isValidTimeZone).sort();
 }
 
-function intakeUrl() {
-  const base = new URL('intake.html', window.location.href);
+function pageUrl(file) {
+  const base = new URL(file, window.location.href);
   base.search = '';
   base.hash = '';
-  return buildIntakeUrl(base.href, state.settings, { nowLocal: nowInZone(tz()) });
+  return base.href;
+}
+
+function intakeUrl() {
+  return buildIntakeUrl(pageUrl('intake.html'), state.settings, { nowLocal: nowInZone(tz()) });
+}
+
+/** Availability calendar link; with a guest it pre-fills their id, name and email. */
+function availabilityUrl(g) {
+  return buildIntakeUrl(pageUrl('availability.html'), state.settings, { slots: false, guest: g || undefined });
+}
+
+/** Per-guest links used by the {{availability_link}} and {{qa_link}} placeholders. */
+function guestLinks(g) {
+  const links = { availabilityLink: availabilityUrl(g) };
+  if (typeof qaUrl === 'function') links.qaLink = qaUrl(g).url;
+  return links;
 }
 
 function renderSettings() {
@@ -1023,6 +1115,14 @@ function renderSettings() {
         h('div', { class: 'btn-row' },
           h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'copy-intake' }, 'aria-describedby': s.hostEmail ? null : 'no-email-warn' }, 'Copy link'),
           h('a', { class: 'btn btn-quiet', id: 'open-intake', href: intakeUrl(), target: '_blank', rel: 'noopener' }, 'Open form ↗')
+        ),
+        h('div', { class: 'field' }, 'Availability calendar link',
+          h('span', { class: 'hint' }, 'A week grid where guests mark when they’re free. From a guest’s panel you can send a personal link instead.'),
+          h('div', { class: 'share-url', id: 'share-avail-url' }, availabilityUrl())
+        ),
+        h('div', { class: 'btn-row' },
+          h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'copy-avail-link' } }, 'Copy availability link'),
+          h('a', { class: 'btn btn-quiet', id: 'open-avail', href: availabilityUrl(), target: '_blank', rel: 'noopener' }, 'Open calendar ↗')
         )
       ),
 
@@ -1169,6 +1269,8 @@ function updateSettings(patch, { rerender = false } = {}) {
   if (share) share.textContent = intakeUrl();
   const open = $('#open-intake');
   if (open) open.href = intakeUrl();
+  if ($('#share-avail-url')) $('#share-avail-url').textContent = availabilityUrl();
+  if ($('#open-avail')) $('#open-avail').href = availabilityUrl();
   const warn = $('#no-email-warn');
   if (warn) {
     warn.hidden = !!state.settings.hostEmail;
@@ -1264,6 +1366,8 @@ function initSettings() {
       updateSettings({ intakeSlots: [] }, { rerender: true });
       $('[data-action="suggest-slots"]').focus();
       toast(`Cleared ${n} time${n === 1 ? '' : 's'}. The form will suggest times instead.`);
+    } else if (action === 'copy-avail-link') {
+      toast((await copyText(availabilityUrl())) ? 'Availability link copied.' : 'Could not copy. Select the link text and copy it yourself.');
     } else if (action === 'copy-intake') {
       toast((await copyText(intakeUrl())) ? 'Intake link copied.' : 'Could not copy. Select the link text and copy it yourself.');
     } else if (action === 'export') {

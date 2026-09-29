@@ -14,11 +14,23 @@ A small, self-contained web app for running a podcast's guest pipeline, from fir
   - `{{recording_time}}` (formatted, with the host time zone)
   - `{{show_name}}`
   - `{{episode_link}}`
+  - `{{availability_link}}` (a guest's personal availability calendar link)
+  - `{{qa_link}}` (a guest's personal pre-interview questions link)
 
   From a guest's panel, pick a template to see it filled in. Then use **Open in email app** (a prefilled `mailto:` link) or **Copy email**.
 - **Guest intake form** (`intake.html`). Guests enter their details, pick recording times, upload a headshot, choose a recording setup and agree to the release. With the backend connected, answers reach you directly (see below).
 - **Settings.** Show name, host time zone (used for recording times, templates and the intake form), optional host email, the times offered on the intake form, and a shareable intake link.
 - **Sample data.** On first run a few guests marked "Sample" are added so there is something to explore. **Clear sample data** (on the banner or in Settings) removes only those.
+
+## Availability calendar
+
+`availability.html` is a guest-facing week grid (Monday to Sunday, 30-minute rows from 8 AM to 8 PM) where guests mark when they're free:
+
+- **Paint times** by clicking, or pressing and dragging with a mouse. On touch screens a tap toggles one half hour. With a keyboard the grid is a set of real buttons (`aria-pressed`): the arrow keys, Home/End and Page Up/Down move, and Space or Enter marks a half hour. Past times are greyed out.
+- **Two time zones.** Times start in the show's time zone. When the guest's browser is in another zone, a switch shows the grid in their own zone instead. Marks are kept as exact instants, so they line up in both views. The guest can look up to four weeks ahead, clear a week, and see a summary of merged ranges.
+- **Sending.** With an endpoint it posts `type: "availability"` to the same Apps Script (stored in the `Availability` sheet). Without one, or if sending fails, it offers copy / email like the intake form.
+- **Links.** Settings has a general availability link. Each guest's panel has **Copy availability link** (it pre-fills that guest's id, name and email) and **Email availability request**, which uses the new *Availability request* template and its `{{availability_link}}` placeholder. The intake form links to the calendar too ("Pick your times on a calendar").
+- **On the host side**, "Check for new submissions" imports availability into the matching guest (by guest id, then email, else a new Outreach guest), converted to the host's time zone. The latest calendar replaces earlier free times. The guest panel lists upcoming ranges; pick a start time and press **Book** to set the recording time (an Outreach guest moves to Booked). The Recording calendar can overlay one guest's free times ("Show availability for").
 
 ## Where your data lives
 
@@ -86,6 +98,8 @@ This needs Node 18 or later. On Node 22 a directory argument loads `tests/index.
 | --- | --- |
 | `index.html` | The app: pipeline, calendar, table, templates, settings |
 | `intake.html` | Guest intake form |
+| `availability.html` | Guest availability calendar |
+| `js/availability.js` | Availability calendar UI |
 | `css/styles.css` | Shared styles (Bricolage Grotesque, IBM Plex Sans, IBM Plex Mono via Google Fonts) |
 | `js/logic.js` | Pure logic, no DOM or storage access |
 | `js/store.js` | `localStorage` wrapper (every access guarded) |
