@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>github-slideshow</title>
+  <meta name="description" content="A fun activity for learning Git and GitHub.">
+  <meta name="author" content="GitHubTeacher">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/css/reset.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/css/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/css/theme/moon.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/lib/css/monokai.css">
+</head>
+<body>
+  <div class="reveal">
+    <div class="slides">
+
+      <section class="step slide">
+        <h1>Welcome to our slide deck!</h1>
+        <p>Use the right arrow to begin!</p>
+      </section>
+
+      <!-- Add more slides by copying a <section> block above, e.g.:
+      <section class="step slide">
+        <h1>Slide title</h1>
+        <p>Slide content</p>
+      </section>
+      -->
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/js/reveal.js"></script>
+  <script>
+    Reveal.initialize({
+      hash: true,
+      controls: false,
+      progress: true,
+      history: true,
+      keyboard: true,
+      overview: true,
+      center: true,
+      touch: true,
+      loop: false,
+      fragments: true,
+      slideNumber: 'c/t',
+      transition: 'linear',
+      backgroundTransition: 'slide',
+      width: 1000,
+      height: 920,
+      margin: 0.1,
+      minScale: 0.2,
+      maxScale: 1.5,
+      dependencies: [
+        { src: 'https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/plugin/markdown/marked.js' },
+        { src: 'https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/plugin/markdown/markdown.js' },
+        { src: 'https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/plugin/highlight/highlight.js' },
+        { src: 'https://cdn.jsdelivr.net/npm/reveal.js@3.9.2/plugin/notes/notes.js', async: true }
+      ]
+    });
+  </script>
+</body>
+</html>
