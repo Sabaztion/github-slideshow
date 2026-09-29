@@ -752,18 +752,29 @@ export function safeHttpUrl(value) {
   }
 }
 
-/** Longest mailto body we build; many mail apps and browsers cut links near 2000 characters. */
-export const MAILTO_BODY_MAX = 1500;
+/** Longest mailto: link we build; many mail apps and browsers cut links near 2000 characters. */
+export const MAILTO_MAX = 1900;
 
 /**
- * mailto: link for a long text. When the text is too long it is cut and
- * `truncated` is true, so the page can point the guest to "Copy as text".
+ * mailto: link for a long text, at most `max` characters once encoded
+ * (non-ASCII text grows a lot when percent-encoded). When the text has to be
+ * cut, `truncated` is true so the page can point the guest to "Copy as text".
  */
-export function mailtoForText(to, subject, text, max = MAILTO_BODY_MAX) {
+export function mailtoForText(to, subject, text, max = MAILTO_MAX) {
   const full = String(text || '');
-  if (full.length <= max) return { href: buildMailto(to, subject, full), truncated: false };
+  const whole = buildMailto(to, subject, full);
+  if (whole.length <= max) return { href: whole, truncated: false };
   const note = '\n\n[Shortened to fit an email link. Please paste the full answers from “Copy as text”.]';
-  return { href: buildMailto(to, subject, full.slice(0, Math.max(0, max - note.length)) + note), truncated: true };
+  const chars = [...full]; // never split a surrogate pair
+  const make = (n) => buildMailto(to, subject, chars.slice(0, n).join('') + note);
+  let lo = 0;
+  let hi = chars.length;
+  while (lo < hi) { // largest n whose link fits
+    const mid = Math.ceil((lo + hi) / 2);
+    if (make(mid).length <= max) lo = mid;
+    else hi = mid - 1;
+  }
+  return { href: make(lo), truncated: true };
 }
 
 /**

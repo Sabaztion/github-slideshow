@@ -520,14 +520,7 @@ function renderPanel() {
         h('button', { type: 'button', class: 'btn btn-danger', id: 'panel-delete', dataset: { action: 'delete-guest' } }, `Delete ${displayName(g)}`)
       )
     ),
-    h('div', { class: 'panel-foot' },
-      g.email
-        ? h('a', { class: 'btn btn-outline', href: buildMailto(g.email) }, 'Email guest')
-        : h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'focus-email' } }, 'Add email'),
-      next
-        ? h('button', { type: 'button', class: 'btn btn-primary', id: 'panel-advance', dataset: { action: 'advance' } }, `Move to ${next.label}`)
-        : h('span', { class: 'btn', style: { cursor: 'default', color: getStage('published').fg } }, 'Published ✓')
-    )
+    panelFoot(g)
   );
 
   $('.panel-scroll', panel).scrollTop = scrollTop;
@@ -538,6 +531,32 @@ function renderPanel() {
       if (caret && typeof el.setSelectionRange === 'function') try { el.setSelectionRange(...caret); } catch { /* not a text input */ }
     }
   }
+}
+
+function panelFoot(g) {
+  const next = nextStage(g.stage);
+  return h('div', { class: 'panel-foot' },
+    g.email
+      ? h('a', { class: 'btn btn-outline', href: buildMailto(g.email) }, 'Email guest')
+      : h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'focus-email' } }, 'Add email'),
+    next
+      ? h('button', { type: 'button', class: 'btn btn-primary', id: 'panel-advance', dataset: { action: 'advance' } }, `Move to ${next.label}`)
+      : h('span', { class: 'btn', style: { cursor: 'default', color: getStage('published').fg } }, 'Published ✓')
+  );
+}
+
+/** Update only the stage-dependent parts of the panel (pill, picker, footer). */
+function refreshPanelStage(g) {
+  const s = getStage(g.stage);
+  const pill = $('#panel-pill');
+  if (pill) {
+    pill.textContent = s.label;
+    pill.style.background = s.bg;
+    pill.style.color = s.fg;
+  }
+  const sel = $('#panel-stage');
+  if (sel && sel.value !== g.stage) sel.value = g.stage;
+  $('.panel-foot', panel)?.replaceWith(panelFoot(g));
 }
 
 /** Light update while typing in the panel (no full re-render, so typing is never interrupted). */
@@ -567,7 +586,7 @@ function syncOverlay() {
     panel.setAttribute('aria-labelledby', 'panel-name');
     panel.removeAttribute('aria-label');
   } else {
-    panel.removeAttribute('role');
+    panel.setAttribute('role', 'region');
     panel.removeAttribute('aria-modal');
     panel.removeAttribute('aria-labelledby');
     panel.setAttribute('aria-label', 'Guest details');
@@ -600,14 +619,25 @@ function closePanel({ restore = true } = {}) {
   }
 }
 
-function commitPendingStage() {
+/**
+ * Apply a stage picked with the keyboard. On Enter the panel re-renders and
+ * focus returns to the picker. On blur only the stage-dependent parts are
+ * updated, so the focus move (Tab, Shift+Tab, a click on Close) goes ahead.
+ */
+function commitPendingStage({ refocus = true } = {}) {
   const g = findGuest(ui.selectedId);
   const value = ui.stagePending;
   ui.stagePending = null;
-  if (g && value && value !== g.stage) {
+  if (!g || !value || value === g.stage) return;
+  if (refocus) {
     moveTo(g.id, value);
     $('#panel-stage')?.focus();
+    return;
   }
+  const moved = moveGuest(g, value, nowIso());
+  saveGuest(moved);
+  refreshPanelStage(moved);
+  toast(`Moved ${displayName(g)} to ${getStage(value).label}.`);
 }
 
 /** Non-blocking hint under a panel field whose value looks wrong. */
@@ -722,7 +752,7 @@ function initPanel() {
   });
   panel.addEventListener('focusout', (e) => {
     if (e.target.id === 'panel-stage') {
-      commitPendingStage();
+      commitPendingStage({ refocus: false });
       ui.stageKeyed = false;
     }
     // Soft checks on email and link fields once the person leaves them.
@@ -733,6 +763,13 @@ function initPanel() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !panel.hidden && !addDialog.open) {
       e.preventDefault();
+      // Escape on the stage picker with an uncommitted keyboard change cancels the change first.
+      if (e.target.id === 'panel-stage' && ui.stagePending) {
+        ui.stagePending = null;
+        ui.stageKeyed = false;
+        e.target.value = findGuest(ui.selectedId)?.stage || e.target.value;
+        return;
+      }
       closePanel();
     }
   });

@@ -44,9 +44,20 @@ describe('review fixes: logic', () => {
     assert.equal(short.truncated, false);
     const long = L.mailtoForText('h@x.test', 'S', 'x'.repeat(5000));
     assert.equal(long.truncated, true);
+    assert.ok(long.href.length <= L.MAILTO_MAX);
     const body = decodeURIComponent(long.href.split('body=')[1]);
-    assert.ok(body.length <= L.MAILTO_BODY_MAX + 10);
     assert.match(body, /Copy as text/);
+  });
+
+  test('mailto links stay under the limit once encoded, even for non-ASCII text', () => {
+    const text = 'Ünïcødé 🎙️ ответ 回答 '.repeat(300);
+    const m = L.mailtoForText('h@x.test', 'Guest intake: Zoë', text);
+    assert.equal(m.truncated, true);
+    assert.ok(m.href.length <= L.MAILTO_MAX, `length ${m.href.length}`);
+    assert.ok(m.href.length > L.MAILTO_MAX - 200, 'uses most of the room');
+    const body = decodeURIComponent(m.href.split('body=')[1]); // still valid UTF-8
+    assert.match(body, /^Ünïcødé/);
+    assert.equal(L.mailtoForText('h@x.test', 'S', 'short ü').truncated, false);
   });
 
   test('safeHttpUrl only allows http and https', () => {
