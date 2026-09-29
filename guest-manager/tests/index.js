@@ -2,3 +2,5 @@
 // directory argument resolves to this index file, which loads every suite.
 // (`node --test guest-manager/tests/*.test.js` works too.)
 import './logic.test.js';
+import './review.test.js';
+import './store.test.js';

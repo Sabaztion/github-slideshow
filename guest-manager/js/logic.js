@@ -132,8 +132,9 @@ export function normalizeGuest(raw, { idFn = defaultId } = {}) {
   const g = {};
   g.id = typeof src.id === 'string' && src.id ? src.id : idFn();
   for (const f of GUEST_TEXT_FIELDS) g[f] = src[f] == null ? '' : String(src[f]);
-  if (g.recordingAt && !parseLocal(g.recordingAt)) g.recordingAt = '';
-  if (g.recordingAt) g.recordingAt = toLocalString(parseLocal(g.recordingAt));
+  // A recording needs a time: date-only (or invalid) values count as unscheduled.
+  const rec = parseLocal(g.recordingAt);
+  g.recordingAt = rec && rec.hasTime ? toLocalString(rec) : '';
   g.stage = isValidStage(src.stage) ? src.stage : 'outreach';
   const checks = src.checks && typeof src.checks === 'object' ? src.checks : {};
   g.checks = Object.fromEntries(CHECKS.map((c) => [c.key, checks[c.key] === true]));
@@ -487,7 +488,11 @@ export function parseState(json, { idFn = defaultId, timeZone = 'UTC' } = {}) {
   }
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Expected a guest manager backup object.');
   if (data.app && data.app !== APP_ID) throw new Error('This backup is from a different app.');
-  if (typeof data.version === 'number' && data.version > SCHEMA_VERSION) throw new Error('This backup is from a newer version of the app.');
+  if (data.version !== undefined && data.version !== null) {
+    const v = typeof data.version === 'string' && data.version.trim() !== '' ? Number(data.version) : data.version;
+    if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error('The backup has an unreadable version number.');
+    if (v > SCHEMA_VERSION) throw new Error('This backup is from a newer version of the app.');
+  }
   if (!Array.isArray(data.guests)) throw new Error('The backup has no guest list.');
   const seen = new Set();
   const guests = data.guests.map((g) => {
@@ -572,7 +577,9 @@ export function intakeToGuest(a, { idFn = defaultId, nowIso = new Date().toISOSt
   const setup = setupLabel(a.setup);
   const noteLines = ['Submitted via intake form.'];
   if (setup) noteLines.push(`Recording setup: ${setup}.`);
-  if (a.headshot) noteLines.push(`Headshot file: ${a.headshot} (ask the guest to email it).`);
+  const headshotUrl = safeHttpUrl(a.headshotUrl);
+  if (headshotUrl) noteLines.push(`Headshot: ${headshotUrl}`);
+  else if (a.headshot) noteLines.push(`Headshot file: ${a.headshot} (ask the guest to email it).`);
   if (notes) noteLines.push('', notes);
   return createGuest({
     id,
@@ -584,12 +591,13 @@ export function intakeToGuest(a, { idFn = defaultId, nowIso = new Date().toISOSt
     social: String(a.social || '').trim(),
     bio: String(a.bio || '').trim(),
     setup: a.setup || '',
-    headshot: a.headshot || '',
+    headshot: headshotUrl || a.headshot || '',
     availability: Array.isArray(a.availability) ? a.availability : [],
     notes: noteLines.join('\n'),
     stage: 'outreach',
     source: 'intake',
-    checks: { bio: !!(String(a.bio || '').trim() && a.headshot), release: a.consent === true }
+    // "Bio & headshot received" only when a photo actually arrived (a stored URL), not just a file name.
+    checks: { bio: !!(String(a.bio || '').trim() && headshotUrl), release: a.consent === true }
   }, { idFn, nowIso });
 }
 
@@ -620,13 +628,61 @@ export function intakeToText(a, settings) {
   return lines.join('\n');
 }
 
-/** Shareable intake link that carries the host's settings in the query string. */
-export function buildIntakeUrl(base, settings) {
+/**
+ * Slots still in the future relative to `nowLocal` ("YYYY-MM-DDTHH:mm" in the
+ * host time zone). Past slots are dropped.
+ */
+export function upcomingSlots(slots, nowLocal) {
+  const now = parseLocal(nowLocal) ? toLocalString(parseLocal(nowLocal)) : '';
+  return (slots || []).filter((s) => parseLocal(s)?.hasTime && (!now || toLocalString(parseLocal(s)) > now));
+}
+
+/**
+ * The times to offer on the intake form: the host's upcoming slots, or
+ * suggested ones when none are left.
+ */
+export function slotsToOffer(slots, nowLocal) {
+  const upcoming = upcomingSlots(slots, nowLocal);
+  return upcoming.length ? upcoming : suggestSlots(String(nowLocal).slice(0, 10));
+}
+
+/** Only http(s) URLs may become links; anything else gives ''. */
+export function safeHttpUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : '';
+  } catch {
+    return '';
+  }
+}
+
+/** Longest mailto body we build; many mail apps and browsers cut links near 2000 characters. */
+export const MAILTO_BODY_MAX = 1500;
+
+/**
+ * mailto: link for a long text. When the text is too long it is cut and
+ * `truncated` is true, so the page can point the guest to "Copy as text".
+ */
+export function mailtoForText(to, subject, text, max = MAILTO_BODY_MAX) {
+  const full = String(text || '');
+  if (full.length <= max) return { href: buildMailto(to, subject, full), truncated: false };
+  const note = '\n\n[Shortened to fit an email link. Please paste the full answers from “Copy as text”.]';
+  return { href: buildMailto(to, subject, full.slice(0, Math.max(0, max - note.length)) + note), truncated: true };
+}
+
+/**
+ * Shareable intake link that carries the host's settings in the query string.
+ * Past slots are left out when `nowLocal` (host time) is given.
+ */
+export function buildIntakeUrl(base, settings, { nowLocal } = {}) {
   const params = new URLSearchParams();
   if (settings.showName) params.set('show', settings.showName);
   if (settings.timeZone) params.set('tz', settings.timeZone);
   if (settings.hostEmail) params.set('to', settings.hostEmail);
-  if (settings.intakeSlots?.length) params.set('slots', settings.intakeSlots.join(','));
+  const slots = nowLocal ? upcomingSlots(settings.intakeSlots, nowLocal) : (settings.intakeSlots || []);
+  if (slots.length) params.set('slots', slots.join(','));
   const q = params.toString();
   return q ? `${base}?${q}` : base;
 }

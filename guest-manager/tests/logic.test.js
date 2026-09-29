@@ -372,7 +372,7 @@ describe('intake', () => {
     assert.equal(g.stage, 'outreach');
     assert.equal(g.source, 'intake');
     assert.deepEqual(g.availability, ['2026-10-05T10:00', '2026-10-07T16:00']);
-    assert.equal(g.checks.bio, true);
+    assert.equal(g.checks.bio, false, 'a file name alone is not a received headshot');
     assert.equal(g.checks.release, true);
     assert.equal(g.checks.call, false);
     assert.match(g.notes, /Remote, own mic/);

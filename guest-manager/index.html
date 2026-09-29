@@ -45,6 +45,13 @@
   </nav>
 
   <main class="main" id="main" tabindex="-1">
+    <div class="banner banner-warn" id="corrupt-banner" role="alert" hidden>
+      <p><strong>Your saved data could not be read, so nothing is being saved.</strong> It was left untouched. You are looking at sample data in memory; changes here are lost when you close the tab. <span id="corrupt-detail"></span></p>
+      <div class="btn-row">
+        <button type="button" class="btn btn-outline btn-sm" data-action="download-raw">Download raw data</button>
+        <button type="button" class="btn btn-quiet btn-sm" data-action="start-fresh">Start fresh</button>
+      </div>
+    </div>
     <div class="banner" id="sample-banner" hidden>
       <p><strong>Sample data.</strong> The guests marked “Sample” are made up so you can explore. Your own guests stay when you clear them.</p>
       <button type="button" class="btn btn-quiet btn-sm" data-action="clear-samples">Clear sample data</button>

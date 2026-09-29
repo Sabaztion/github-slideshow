@@ -2,10 +2,10 @@
 // browser's guest list (same storage as the pipeline) and offers the answers as
 // text so a remote guest can email them to the host.
 import {
-  SETUP_OPTIONS, validateIntake, intakeToGuest, intakeToText, readIntakeParams, suggestSlots,
-  nowInZone, formatDay, formatTime, buildMailto, createInitialState, upsertGuest, isValidTimeZone
+  SETUP_OPTIONS, validateIntake, intakeToGuest, intakeToText, readIntakeParams,
+  nowInZone, formatDay, formatTime, mailtoForText, createInitialState, upsertGuest, isValidTimeZone, slotsToOffer
 } from './logic.js';
-import { loadStoredState, saveState, browserTimeZone } from './store.js';
+import { inspectStoredState, loadStoredState, saveState, browserTimeZone } from './store.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -18,7 +18,8 @@ const settings = {
   hostEmail: params.hostEmail || stored?.settings.hostEmail || '',
   intakeSlots: params.intakeSlots || stored?.settings.intakeSlots || []
 };
-const slots = settings.intakeSlots.length ? settings.intakeSlots : suggestSlots(nowInZone(settings.timeZone).slice(0, 10));
+// Past times are never offered; with none left the form suggests new ones.
+const slots = slotsToOffer(settings.intakeSlots, nowInZone(settings.timeZone));
 
 const form = $('#intake-form');
 const done = $('#intake-done');
@@ -127,17 +128,25 @@ function showErrors(errors) {
   summary.focus();
 }
 
+/**
+ * Save into this browser's guest list. Returns 'saved', 'blocked' (storage
+ * unavailable) or 'unreadable' (existing data could not be read: it is never
+ * overwritten, so nothing is saved here).
+ */
 function save(a) {
-  const state = loadStoredState() || createInitialState({ timeZone: settings.timeZone, withSamples: false });
+  const stored = inspectStoredState();
+  if (stored.status === 'corrupt') return 'unreadable';
+  const state = stored.status === 'ok' ? stored.state : createInitialState({ timeZone: settings.timeZone, withSamples: false });
   const existing = savedId ? state.guests.find((g) => g.id === savedId) : null;
   let guest = intakeToGuest(a, { id: savedId || undefined });
   if (existing) {
     // Re-submitting after "Edit my answers": update details, keep the host's progress.
     guest = { ...guest, stage: existing.stage, recordingAt: existing.recordingAt, createdAt: existing.createdAt,
-      checks: { ...existing.checks, bio: existing.checks.bio || guest.checks.bio, release: existing.checks.release || guest.checks.release } };
+      // The latest answer about consent wins, so un-ticking it on a resubmit counts.
+      checks: { ...existing.checks, bio: existing.checks.bio || guest.checks.bio, release: guest.checks.release } };
   }
   savedId = guest.id;
-  return saveState(upsertGuest(state, guest));
+  return saveState(upsertGuest(state, guest)) ? 'saved' : 'blocked';
 }
 
 form.addEventListener('click', (e) => {
@@ -162,18 +171,24 @@ form.addEventListener('submit', (e) => {
   showErrors(errors);
   if (Object.keys(errors).length) return;
 
-  const ok = save(a);
+  const saved = save(a);
   const text = intakeToText(a, settings);
   $('#intake-text').value = text;
   const n = a.availability.length;
   $('#done-summary').textContent = n
     ? `We’ll confirm one of your ${n} picked time${n === 1 ? '' : 's'} by email, along with the recording guide.`
     : 'We’ll email you to find a recording time, along with the recording guide.';
-  $('#email-text').href = buildMailto(settings.hostEmail, `Guest intake: ${a.name}`, text);
+  const mail = mailtoForText(settings.hostEmail, `Guest intake: ${a.name}`, text);
+  $('#email-text').href = mail.href;
+  $('#mailto-note').hidden = !mail.truncated;
   form.hidden = true;
   done.hidden = false;
   $('#done-title').focus();
-  if (!ok) toast('This browser blocked saving, so please copy your answers and email them.');
+  if (saved !== 'saved') {
+    $('#done-local-note').textContent = 'Your answers could not be saved in this browser. Please send them to the show: copy them below, or open them in your email app.';
+  }
+  if (saved === 'blocked') toast('This browser blocked saving, so please copy your answers and email them.');
+  else if (saved === 'unreadable') toast('This browser’s guest list could not be read, so your answers were not saved here. Please copy them and email them.');
 });
 
 $('#edit-answers').addEventListener('click', () => {

@@ -7,7 +7,7 @@ import {
   parseState, upsertGuest, removeGuest, clearSamples, hasSamples, createInitialState, suggestSlots,
   parseLocal, toLocalString, buildIntakeUrl, countByStage
 } from './logic.js';
-import { loadState, loadStoredState, saveState, browserTimeZone, STORAGE_KEY } from './store.js';
+import { loadState, loadStoredState, saveState, browserTimeZone, STORAGE_KEY, unreadableData, releaseUnreadable } from './store.js';
 
 /* ---------------------------------------------------------------- */
 /* Helpers                                                           */
@@ -114,7 +114,7 @@ const ui = {
 
 function commit(next, { main = true } = {}) {
   state = next;
-  if (!saveState(state) && !storageWarned) {
+  if (!saveState(state) && !storageWarned && !unreadableData()) {
     storageWarned = true;
     toast('Browser storage is unavailable, so changes will be lost when you close this tab. Use Export to keep a copy.');
   }
@@ -158,6 +158,30 @@ const VIEWS = {
 function renderChrome() {
   $('#brand-name').textContent = state.settings.showName;
   $('#sample-banner').hidden = !hasSamples(state);
+  const bad = unreadableData();
+  $('#corrupt-banner').hidden = !bad;
+  if (bad) {
+    $('#corrupt-detail').textContent = bad.backupKey
+      ? `A copy was kept under the storage key “${bad.backupKey}”. (${bad.error})`
+      : `It could not be copied to a backup key, so it has been left exactly as it was. (${bad.error})`;
+  }
+}
+
+function downloadRaw() {
+  const bad = unreadableData();
+  if (!bad) return;
+  download(`guest-manager-unreadable-${todayYmd()}.json`, bad.raw);
+  toast('Downloaded the stored data exactly as it was.');
+}
+
+function startFreshFromUnreadable() {
+  const bad = unreadableData();
+  if (!bad) return;
+  const where = bad.backupKey ? `It stays backed up under “${bad.backupKey}”.` : 'It could NOT be backed up, so download it first if you need it.';
+  if (!window.confirm(`Start saving again? The unreadable data will be replaced by what you see now. ${where}`)) return;
+  releaseUnreadable();
+  commit(state);
+  toast('Saving is back on.');
 }
 
 function setView(view, { focus = false } = {}) {
@@ -853,7 +877,7 @@ function intakeUrl() {
   const base = new URL('intake.html', window.location.href);
   base.search = '';
   base.hash = '';
-  return buildIntakeUrl(base.href, state.settings);
+  return buildIntakeUrl(base.href, state.settings, { nowLocal: nowInZone(tz()) });
 }
 
 function renderSettings() {
@@ -1087,13 +1111,15 @@ function init() {
     const action = e.target.closest('[data-action]')?.dataset.action;
     if (action === 'add-guest') openAddDialog();
     else if (action === 'clear-samples') clearSampleData();
+    else if (action === 'download-raw') downloadRaw();
+    else if (action === 'start-fresh') startFreshFromUnreadable();
   });
 
   window.addEventListener('hashchange', () => setView(location.hash.slice(1), { focus: true }));
 
   // Pick up guests saved from the intake form in another tab.
   window.addEventListener('storage', (e) => {
-    if (e.key !== STORAGE_KEY) return;
+    if (e.key !== STORAGE_KEY || unreadableData()) return;
     const fresh = loadStoredState();
     if (!fresh) return;
     state = fresh;

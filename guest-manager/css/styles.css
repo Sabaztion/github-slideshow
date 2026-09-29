@@ -320,6 +320,9 @@ h1, h2, h3 { text-wrap: balance; }
   color: var(--ink-2);
 }
 .banner p { margin: 0; }
+.banner p { flex: 1 1 320px; line-height: 1.5; }
+.banner-warn { border: 2px solid #A3230E; background: #FBEDE7; color: #6E200A; }
+.banner-warn .btn-row { flex: 0 0 auto; }
 
 .page-head {
   display: flex;

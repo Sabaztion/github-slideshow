@@ -27,6 +27,8 @@ Everything is stored in your browser's `localStorage` under the key `podcast-gue
 - Data is per browser and per device. Another browser, or a private window, starts empty.
 - Clearing site data deletes it. Use **Settings → Export JSON** regularly for a backup, and **Import JSON** to restore it or move it to another browser. Import replaces the current data after asking you first.
 - If storage is blocked, the app still works for the current visit and warns you that changes won't be kept.
+- If the stored data exists but can't be read (for example it was written by a newer version, or got truncated), it is **never overwritten**. The app copies it to a backup key (`podcast-guest-manager:v1:corrupt-<timestamp>`), shows a warning banner with **Download raw data**, and runs on sample data in memory without saving. **Start fresh** turns saving back on (the backup key stays). The intake form also refuses to save into an unreadable guest list; guests can still copy or email their answers.
+- **On GitHub Pages, storage is shared by every site on the same origin.** Every project site under `https://<user>.github.io/` shares one `localStorage`, so any other page published there can read this app's data. For real guest data, serve the app from its own origin: a custom domain or subdomain (for example `guests.example.com`), or at least a GitHub account/organization whose `github.io` site hosts nothing else.
 
 ## The intake form has no backend
 
