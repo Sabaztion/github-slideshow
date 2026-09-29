@@ -5,3 +5,7 @@ import './logic.test.js';
 import './review.test.js';
 import './store.test.js';
 import './a11y.test.js';
+import './backend.test.js';
+import './slots.test.js';
+import './plan.test.js';
+import './remote.test.js';

@@ -21,22 +21,31 @@
   <header>
     <h1 id="intake-title" tabindex="-1">You’re coming on <span data-show-name>our show</span></h1>
     <p>A few details so we can introduce you well and book a time that works. Takes about five minutes.</p>
+    <p class="delivery-note" id="delivery-note"></p>
   </header>
 
   <section class="intake-done" id="intake-done" aria-labelledby="done-title" hidden>
     <h2 id="done-title" tabindex="-1">Thanks, you’re in the queue.</h2>
     <p id="done-summary">We’ll confirm one of your picked times by email, along with the recording guide.</p>
-    <p id="done-local-note">Your answers were saved in this browser’s guest list (handy if the host is filling this in with you). If you’re a guest on your own device, please send your answers to the show: copy them below, or open them in your email app.</p>
+    <p id="done-sent-note" hidden>Your answers went straight to the show. You can close this page.</p>
+    <p class="note-warn" id="done-photo-note" hidden></p>
     <p class="note-warn" id="done-consent" hidden>You didn’t tick the recording release. That’s fine for now: the show will follow up about it before recording.</p>
-    <label class="field">Your answers as text
-      <textarea class="input" id="intake-text" rows="12" readonly></textarea>
-    </label>
+    <div class="error-summary" id="send-error" role="alert" hidden></div>
+    <div class="fallback-block" id="fallback-block">
+      <p id="done-local-note">Your answers were saved in this browser’s guest list (handy if the host is filling this in with you). If you’re a guest on your own device, please send your answers to the show: copy them below, or open them in your email app.</p>
+      <label class="field">Your answers as text
+        <textarea class="input" id="intake-text" rows="12" readonly></textarea>
+      </label>
+      <div class="btn-row">
+        <button type="button" class="btn btn-primary" id="retry-send" hidden>Try sending again</button>
+        <button type="button" class="btn btn-outline" id="copy-text">Copy as text</button>
+        <a class="btn btn-outline" id="email-text" href="#">Open in email app</a>
+      </div>
+      <p class="hint" id="mailto-note" hidden>Your answers are long, so the email version is shortened. Use “Copy as text” and paste the full answers into your email.</p>
+    </div>
     <div class="btn-row">
-      <button type="button" class="btn btn-primary" id="copy-text">Copy as text</button>
-      <a class="btn btn-outline" id="email-text" href="#">Open in email app</a>
       <button type="button" class="btn btn-quiet" id="edit-answers">Edit my answers</button>
     </div>
-    <p class="hint" id="mailto-note" hidden>Your answers are long, so the email version is shortened. Use “Copy as text” and paste the full answers into your email.</p>
   </section>
 
   <form class="intake-form" id="intake-form" novalidate>
@@ -109,6 +118,12 @@
       <p>By taking part you allow <span data-show-name>the show</span> to record, edit and publish the conversation as a podcast episode, and to use short clips, your name, bio and headshot to promote it. You can ask us to correct factual errors before publication. This is a template: hosts should replace it with their own release.</p>
     </details>
 
+    <!-- Spam trap: hidden from people and screen readers. Bots that fill every field get ignored. -->
+    <div class="hp-field" id="hp-field" aria-hidden="true">
+      <label>Leave this empty <input type="text" tabindex="-1" autocomplete="off"></label>
+    </div>
+
+    <p class="send-status" id="send-status" role="status" aria-live="polite"></p>
     <div class="form-foot">
       <span class="mono" id="slot-count" aria-live="polite">0 times picked</span>
       <button type="submit" class="btn btn-primary btn-lg">Send to the show</button>

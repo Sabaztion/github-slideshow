@@ -7,7 +7,10 @@ import {
   parseState, upsertGuest, removeGuest, clearSamples, hasSamples, createInitialState, suggestSlots,
   parseLocal, toLocalString, buildIntakeUrl, countByStage, isValidEmail, softUrlWarning, hasNoRelease
 } from './logic.js';
-import { loadState, loadStoredState, saveState, browserTimeZone, STORAGE_KEY, unreadableData, releaseUnreadable } from './store.js';
+import { loadState, loadStoredState, saveState, browserTimeZone, STORAGE_KEY, unreadableData, releaseUnreadable, loadSync, saveSync } from './store.js';
+import { normalizeEndpoint, safeHttpUrl } from './logic.js';
+import { applySubmissions, importSummary, sinceFor } from './remote.js';
+import { checkHealth, fetchSubmissions } from './api.js';
 
 /* ---------------------------------------------------------------- */
 /* Helpers                                                           */
@@ -98,6 +101,9 @@ function download(filename, text) {
 
 let state = loadState();
 let storageWarned = false;
+// Read key, last check time and imported submission ids: kept apart from the
+// main data, never exported and never put in a link.
+let sync = loadSync();
 
 const ui = {
   view: 'pipeline',
@@ -415,7 +421,10 @@ function renderPanel() {
 
       h('section', { class: 'panel-section', 'aria-labelledby': 'h-details' },
         h('h3', { class: 'section-label', id: 'h-details' }, 'Details'),
-        h('div', { class: 'field-grid' }, PANEL_FIELDS.map((f) => fieldControl(g, f)))
+        h('div', { class: 'field-grid' }, PANEL_FIELDS.map((f) => fieldControl(g, f))),
+        safeHttpUrl(g.headshot)
+          ? h('p', { class: 'panel-note' }, 'Headshot: ', h('a', { href: safeHttpUrl(g.headshot), target: '_blank', rel: 'noopener noreferrer' }, 'Open photo ↗'))
+          : g.headshot ? h('p', { class: 'panel-note hint' }, `Headshot file named “${g.headshot}” (not uploaded).`) : null
       ),
 
       g.availability.length ? h('section', { class: 'panel-section', 'aria-labelledby': 'h-avail' },
@@ -1007,7 +1016,7 @@ function renderSettings() {
           s.intakeSlots.length ? h('button', { type: 'button', class: 'btn btn-quiet', dataset: { action: 'clear-slots' } }, 'Clear times') : null
         ),
         h('div', { class: 'field' }, 'Shareable link',
-          h('span', { class: 'hint' }, 'Carries your show name, time zone, email and times, so a remote guest sees the right details.'),
+          h('span', { class: 'hint' }, 'Carries your show name, time zone, email, times and (if set) the endpoint URL, so a remote guest sees the right details and their answers reach your sheet. It never contains your read key.'),
           h('div', { class: 'share-url', id: 'share-url' }, intakeUrl())
         ),
         h('p', { class: 'note-warn', id: 'no-email-warn', hidden: !!s.hostEmail }, 'No host email is set, so a guest who emails their answers will have to type your address themselves. Add your email above.'),
@@ -1016,6 +1025,8 @@ function renderSettings() {
           h('a', { class: 'btn btn-quiet', id: 'open-intake', href: intakeUrl(), target: '_blank', rel: 'noopener' }, 'Open form ↗')
         )
       ),
+
+      backendSection(),
 
       h('section', { class: 'surface span-2', 'aria-labelledby': 'h-data' },
         h('h2', { id: 'h-data' }, 'Backup and data'),
@@ -1029,6 +1040,127 @@ function renderSettings() {
       )
     )
   );
+}
+
+/* ---------------------------------------------------------------- */
+/* Intake backend (Google Apps Script)                               */
+/* ---------------------------------------------------------------- */
+
+const backendReady = () => !!(state.settings.intakeEndpoint && sync.readKey);
+
+function lastCheckedText() {
+  if (!sync.lastSync) return 'Not checked yet.';
+  const d = new Date(sync.lastSync);
+  return `Last checked ${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
+}
+
+function backendSection() {
+  const s = state.settings;
+  const endpoint = h('input', { id: 'set-endpoint', type: 'url', inputmode: 'url', autocomplete: 'off', spellcheck: 'false', placeholder: 'https://script.google.com/macros/s/…/exec', 'aria-describedby': 'endpoint-help endpoint-warn' });
+  endpoint.value = s.intakeEndpoint;
+  const key = h('input', { id: 'set-readkey', type: 'password', autocomplete: 'off', spellcheck: 'false', 'aria-describedby': 'readkey-help' });
+  key.value = sync.readKey;
+  return h('section', { class: 'surface span-2', 'aria-labelledby': 'h-backend' },
+    h('h2', { id: 'h-backend' }, 'Intake backend (Google Sheet)'),
+    h('p', null, 'Connect a free Google Apps Script web app so guests’ intake answers, availability and Q&A reach you from their own devices. The README has step-by-step setup.'),
+    h('div', { class: 'field-grid' },
+      h('label', { class: 'field span-2' }, 'Intake endpoint URL',
+        h('span', { class: 'hint', id: 'endpoint-help' }, 'The web app URL from Deploy → Web app. Share links include it so guests’ answers are posted to your sheet, and only there. It can’t read anything.'),
+        endpoint,
+        h('span', { class: 'field-error', id: 'endpoint-warn', hidden: true })
+      ),
+      h('div', { class: 'field span-2' },
+        h('label', { for: 'set-readkey' }, 'Read key'),
+        h('span', { class: 'hint', id: 'readkey-help' }, 'From setup() in Apps Script. Stays in this browser only: it is never put in a share link or in Export JSON.'),
+        h('div', { class: 'inline-add' }, key,
+          h('button', { type: 'button', class: 'btn btn-quiet', dataset: { action: 'toggle-key' }, 'aria-pressed': 'false', 'aria-controls': 'set-readkey' }, 'Show key'))
+      )
+    ),
+    h('label', { class: 'check-row' },
+      h('input', { type: 'checkbox', id: 'set-autocheck', checked: sync.autoCheck }),
+      h('span', null, 'Check for new submissions when the app opens')
+    ),
+    h('div', { class: 'btn-row' },
+      h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'test-backend' } }, 'Test connection'),
+      h('button', { type: 'button', class: 'btn btn-primary', dataset: { action: 'check-submissions' } }, 'Check for new submissions')
+    ),
+    h('p', { class: 'backend-status', id: 'backend-status', role: 'status', 'aria-live': 'polite' }, backendReady() ? lastCheckedText() : '')
+  );
+}
+
+function setBackendStatus(text) {
+  const el = $('#backend-status');
+  if (el) el.textContent = text;
+}
+
+function syncHeadCheck() {
+  const btn = $('#head-check');
+  if (btn) btn.hidden = !backendReady();
+}
+
+let checking = false;
+
+/**
+ * Fetch new submissions and import them: new guests land in Outreach,
+ * submissions from a known guest (same id or email) merge into that guest,
+ * and ids already imported are skipped.
+ */
+async function checkSubmissions({ quiet = false } = {}) {
+  if (checking) return;
+  if (!backendReady()) {
+    setBackendStatus('Add the endpoint URL and read key first.');
+    if (!quiet) toast('Set up the intake backend in Settings first.');
+    return;
+  }
+  checking = true;
+  const buttons = [...document.querySelectorAll('[data-action="check-submissions"]')];
+  for (const b of buttons) { b.disabled = true; b.setAttribute('aria-busy', 'true'); }
+  setBackendStatus('Checking for new submissions…');
+  const startedAt = nowIso();
+  try {
+    const res = await fetchSubmissions(state.settings.intakeEndpoint, sync.readKey, sinceFor(sync.lastSync));
+    if (!res.ok) {
+      const msg = res.keyRejected ? 'The read key was not accepted. Copy it again from Apps Script (setup() logs it) and paste it here.' : res.error;
+      setBackendStatus(msg);
+      if (!quiet) toast(msg);
+      return;
+    }
+    const result = applySubmissions(state, res.submissions, { seenIds: sync.seenIds, nowIso: nowIso() });
+    sync = { ...sync, seenIds: result.seenIds, lastSync: res.now || startedAt };
+    saveSync(sync);
+    if (result.touched.length) commit(result.state);
+    if (ui.selectedId && result.touched.includes(ui.selectedId)) renderPanel();
+    const summary = importSummary(result.counts);
+    setBackendStatus(`${summary} ${lastCheckedText()}`);
+    if (!quiet || result.touched.length) toast(result.touched.length ? `${summary} New guests are in Outreach.` : summary);
+  } catch (err) {
+    setBackendStatus(`Could not check: ${err.message}`);
+    if (!quiet) toast(`Could not check: ${err.message}`);
+  } finally {
+    checking = false;
+    for (const b of document.querySelectorAll('[data-action="check-submissions"]')) { b.disabled = false; b.removeAttribute('aria-busy'); }
+  }
+}
+
+async function testBackend() {
+  const url = normalizeEndpoint($('#set-endpoint')?.value || state.settings.intakeEndpoint);
+  if (!url) {
+    setBackendStatus('Enter the web app URL first. It starts with https://script.google.com/macros/s/');
+    $('#set-endpoint')?.focus();
+    return;
+  }
+  setBackendStatus('Testing the connection…');
+  try {
+    await checkHealth(url);
+    if (!sync.readKey) {
+      setBackendStatus('Connected. Now paste the read key to import submissions.');
+      return;
+    }
+    const res = await fetchSubmissions(url, sync.readKey, new Date().toISOString());
+    setBackendStatus(res.ok ? 'Connected, and the read key works.' : res.keyRejected ? 'Connected, but the read key was not accepted.' : `Connected, but listing failed: ${res.error}`);
+  } catch (err) {
+    setBackendStatus(`Connection failed: ${err.message}`);
+  }
 }
 
 function updateSettings(patch, { rerender = false } = {}) {
@@ -1053,6 +1185,24 @@ function initSettings() {
     const key = e.target.dataset.setting;
     if (key === 'showName') updateSettings({ showName: e.target.value.trim() ? e.target.value : 'My Podcast' });
     else if (key === 'hostEmail') updateSettings({ hostEmail: e.target.value.trim() });
+    else if (e.target.id === 'set-endpoint') {
+      const raw = e.target.value.trim();
+      const url = normalizeEndpoint(raw);
+      const warn = $('#endpoint-warn');
+      const bad = raw && !url;
+      warn.hidden = !bad;
+      warn.textContent = bad ? 'Enter the full https:// web app URL.' : '';
+      if (bad) e.target.setAttribute('aria-invalid', 'true');
+      else e.target.removeAttribute('aria-invalid');
+      if (!bad) {
+        updateSettings({ intakeEndpoint: url });
+        syncHeadCheck();
+      }
+    } else if (e.target.id === 'set-readkey') {
+      sync = { ...sync, readKey: e.target.value.trim() };
+      saveSync(sync);
+      syncHeadCheck();
+    }
   });
   view.addEventListener('focusout', (e) => {
     // An emptied show name falls back to the saved one; show it rather than leaving the field blank.
@@ -1062,6 +1212,11 @@ function initSettings() {
     }
   });
   view.addEventListener('change', (e) => {
+    if (e.target.id === 'set-autocheck') {
+      sync = { ...sync, autoCheck: e.target.checked };
+      saveSync(sync);
+      return;
+    }
     if (e.target.dataset.setting === 'timeZone' && isValidTimeZone(e.target.value)) {
       updateSettings({ timeZone: e.target.value }, { rerender: true });
       $('#set-tz').focus();
@@ -1078,6 +1233,16 @@ function initSettings() {
       return;
     }
     const action = e.target.closest('[data-action]')?.dataset.action;
+    if (action === 'toggle-key') {
+      const btn = e.target.closest('[data-action]');
+      const input = $('#set-readkey');
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.setAttribute('aria-pressed', String(show));
+      btn.textContent = show ? 'Hide key' : 'Show key';
+      return;
+    }
+    if (action === 'test-backend') return testBackend();
     if (action === 'add-slot') {
       const val = $('#slot-new').value;
       const p = parseLocal(val);
@@ -1244,6 +1409,7 @@ function init() {
     if (action === 'add-guest') openAddDialog();
     else if (action === 'clear-samples') clearSampleData();
     else if (action === 'download-raw') downloadRaw();
+    else if (action === 'check-submissions') checkSubmissions();
     else if (action === 'start-fresh') startFreshFromUnreadable();
   });
 
@@ -1265,6 +1431,8 @@ function init() {
 
   renderChrome();
   setView(location.hash.slice(1) || 'pipeline');
+  syncHeadCheck();
+  if (backendReady() && sync.autoCheck && !unreadableData()) checkSubmissions({ quiet: true });
 }
 
 init();

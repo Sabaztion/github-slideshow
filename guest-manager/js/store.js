@@ -2,6 +2,7 @@
 // throw (private mode, blocked site data, quota). When storage is unavailable
 // the app keeps working in memory for the current visit.
 import { STORAGE_KEY, createInitialState, parseState, serializeState, defaultId, nowInZone } from './logic.js';
+import { SYNC_KEY, normalizeSync } from './remote.js';
 
 let storageOk = true;
 
@@ -122,4 +123,27 @@ export function saveState(state) {
   return write(serializeState(state));
 }
 
-export { STORAGE_KEY };
+/*
+ * Backend sync settings (read key, last check, imported submission ids) live
+ * under their own key. They are never part of Export JSON and never go into
+ * a share link.
+ */
+export function loadSync() {
+  try {
+    const raw = window.localStorage.getItem(SYNC_KEY);
+    return normalizeSync(raw ? JSON.parse(raw) : {});
+  } catch {
+    return normalizeSync({});
+  }
+}
+
+export function saveSync(sync) {
+  try {
+    window.localStorage.setItem(SYNC_KEY, JSON.stringify(normalizeSync(sync)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export { STORAGE_KEY, SYNC_KEY };

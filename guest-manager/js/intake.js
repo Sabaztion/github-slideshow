@@ -1,13 +1,15 @@
-// Guest intake form. There is no backend: submitting saves the guest into this
-// browser's guest list (same storage as the pipeline) and offers the answers as
-// text so a remote guest can email them to the host.
+// Guest intake form. With an endpoint (from the share link's `api` param or
+// this browser's settings) answers are POSTed to the host's Google Apps
+// Script web app. Without one, or when sending fails, the answers are saved
+// into this browser's guest list and offered as text to copy or email.
 import {
   SETUP_OPTIONS, validateIntake, intakeToGuest, intakeToText, readIntakeParams,
   nowInZone, formatDay, formatTime, mailtoForText, convertZone, softUrlWarning, createInitialState, upsertGuest, isValidTimeZone, slotsToOffer
 } from './logic.js';
 import { inspectStoredState, loadStoredState, saveState, browserTimeZone } from './store.js';
-
-const $ = (sel) => document.querySelector(sel);
+import { buildIntakePayload, validatePayload, HONEYPOT_FIELD } from './remote.js';
+import { postSubmission } from './api.js';
+import { $, toast, copyTextarea, setBusy, setStatus, resizeHeadshot } from './guest-page.js';
 
 const stored = loadStoredState();
 const params = readIntakeParams(window.location.search);
@@ -16,7 +18,9 @@ const settings = {
   showName: params.showName || stored?.settings.showName || 'the show',
   timeZone: isValidTimeZone(tz) ? tz : 'UTC',
   hostEmail: params.hostEmail || stored?.settings.hostEmail || '',
-  intakeSlots: params.intakeSlots || stored?.settings.intakeSlots || []
+  intakeSlots: params.intakeSlots || stored?.settings.intakeSlots || [],
+  // Where answers are sent: the host's own Apps Script web app. Never a read key.
+  endpoint: params.endpoint || stored?.settings.intakeEndpoint || ''
 };
 // Past times are never offered; with none left the form suggests new ones.
 const slots = slotsToOffer(settings.intakeSlots, nowInZone(settings.timeZone));
@@ -30,17 +34,16 @@ const form = $('#intake-form');
 const done = $('#intake-done');
 const picked = new Set();
 let savedId = null;
-
-function toast(message) {
-  const el = $('#toast');
-  el.textContent = '';
-  requestAnimationFrame(() => { el.textContent = message; });
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => { el.textContent = ''; }, 4500);
-}
+let lastAnswers = null;
+let sending = false;
 
 function renderStatic() {
   if (fromShare) $('.back-link').hidden = true;
+  if (settings.endpoint) {
+    $('#delivery-note').textContent = `Your answers go straight to ${settings.showName}’s own Google Sheet. Nobody else receives them.`;
+    $('#headshot-help').textContent = 'Square, at least 1000 px. Used for episode art and social posts. It’s resized in your browser and sent with your answers.';
+  }
+  $('#hp-field input').name = HONEYPOT_FIELD;
   $('#guest-tz-note').textContent = guestZone !== settings.timeZone
     ? `Your own time (${guestZone.replace(/_/g, ' ')}) is shown under each option.`
     : '';
@@ -95,6 +98,7 @@ function answers() {
   const f = form.elements;
   const file = f.headshot.files && f.headshot.files[0];
   return {
+    file: file || null,
     name: f.name.value.trim(),
     pronouns: f.pronouns.value.trim(),
     email: f.email.value.trim(),
@@ -183,35 +187,124 @@ $('#in-headshot').addEventListener('change', (e) => {
   $('#headshot-name').textContent = file ? `Selected: ${file.name}` : '';
 });
 
-form.addEventListener('submit', (e) => {
-  e.preventDefault();
-  const a = answers();
-  const errors = validateIntake(a);
-  showErrors(errors);
-  if (Object.keys(errors).length) return;
+/**
+ * Send the answers to the host's endpoint. Returns '' on success, else a
+ * readable error message.
+ */
+async function send(a) {
+  const status = $('#send-status');
+  let headshot = null;
+  let photoNote = '';
+  if (a.file) {
+    setStatus(status, 'Preparing your photo…');
+    try {
+      headshot = await resizeHeadshot(a.file);
+    } catch (err) {
+      photoNote = ` Your photo couldn’t be attached (${err.message}), so please email it to the show.`;
+    }
+  }
+  const payload = buildIntakePayload(a, { showName: settings.showName, timeZone: settings.timeZone, headshot, honeypot: form.elements[HONEYPOT_FIELD]?.value });
+  const invalid = validatePayload(payload);
+  if (invalid) return invalid;
+  setStatus(status, 'Sending your answers to the show…');
+  try {
+    await postSubmission(settings.endpoint, payload);
+    $('#done-photo-note').textContent = photoNote.trim();
+    $('#done-photo-note').hidden = !photoNote;
+    return '';
+  } catch (err) {
+    return err.message || 'Something went wrong while sending.';
+  } finally {
+    setStatus(status, '');
+  }
+}
 
-  const saved = save(a);
-  const text = intakeToText(a, settings);
-  $('#intake-text').value = text;
+function fillSummary(a) {
   const n = a.availability.length;
   $('#done-consent').hidden = a.consent;
   $('#done-summary').textContent = n
     ? `We’ll confirm one of your ${n} picked time${n === 1 ? '' : 's'} by email, along with the recording guide.`
     : 'We’ll email you to find a recording time, along with the recording guide.';
-  const mail = mailtoForText(settings.hostEmail, `Guest intake: ${a.name}`, text);
-  $('#email-text').href = mail.href;
-  $('#mailto-note').hidden = !mail.truncated;
+}
+
+function showDone() {
   form.hidden = true;
   done.hidden = false;
   $('#done-title').focus();
+}
+
+/** Answers reached the host's sheet. */
+function showSent(a) {
+  fillSummary(a);
+  $('#done-title').textContent = 'Thanks, your answers reached the show.';
+  $('#done-sent-note').hidden = false;
+  $('#send-error').hidden = true;
+  $('#fallback-block').hidden = true;
+  showDone();
+}
+
+/** No endpoint, or sending failed: save here and offer copy / email. */
+function showFallback(a, error = '') {
+  const saved = save(a);
+  const text = intakeToText(a, settings);
+  fillSummary(a);
+  $('#done-title').textContent = error ? 'Your answers weren’t sent yet.' : 'Thanks, you’re in the queue.';
+  $('#done-sent-note').hidden = true;
+  $('#done-photo-note').hidden = true;
+  $('#fallback-block').hidden = false;
+  $('#intake-text').value = text;
+  const mail = mailtoForText(settings.hostEmail, `Guest intake: ${a.name}`, text);
+  $('#email-text').href = mail.href;
+  $('#mailto-note').hidden = !mail.truncated;
+  const err = $('#send-error');
+  err.hidden = !error;
+  err.textContent = error ? `Sending failed: ${error} You can try again, or send your answers by email instead.` : '';
+  $('#retry-send').hidden = !(error && settings.endpoint);
   const sendTo = settings.hostEmail
     ? `open them in your email app (addressed to ${settings.hostEmail})`
     : 'paste them into an email to the person who invited you (this link has no show email address, so you’ll need to add theirs)';
   $('#done-local-note').textContent = saved === 'saved'
     ? `Your answers were saved in this browser’s guest list (handy if the host is filling this in with you). If you’re a guest on your own device, please send your answers to the show: copy them below, or ${sendTo}.`
     : `Your answers could not be saved in this browser. Please send them to the show: copy them below, or ${sendTo}.`;
+  showDone();
   if (saved === 'blocked') toast('This browser blocked saving, so please copy your answers and email them.');
   else if (saved === 'unreadable') toast('This browser’s guest list could not be read, so your answers were not saved here. Please copy them and email them.');
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (sending) return;
+  const a = answers();
+  const errors = validateIntake(a);
+  showErrors(errors);
+  if (Object.keys(errors).length) return;
+  lastAnswers = a;
+  if (!settings.endpoint) return showFallback(a);
+  sending = true;
+  const btn = form.querySelector('[type=submit]');
+  setBusy(btn, true, 'Sending…');
+  const error = await send(a);
+  setBusy(btn, false);
+  sending = false;
+  if (error) showFallback(a, error);
+  else showSent(a);
+});
+
+$('#retry-send').addEventListener('click', async () => {
+  if (sending || !lastAnswers) return;
+  sending = true;
+  const btn = $('#retry-send');
+  setBusy(btn, true, 'Sending…');
+  const error = await send(lastAnswers);
+  setBusy(btn, false);
+  sending = false;
+  if (error) {
+    const err = $('#send-error');
+    err.textContent = `Sending failed again: ${error} Please send your answers by email instead.`;
+    btn.focus();
+  } else {
+    showSent(lastAnswers);
+  }
 });
 
 $('#edit-answers').addEventListener('click', () => {
@@ -221,20 +314,7 @@ $('#edit-answers').addEventListener('click', () => {
 });
 
 $('#copy-text').addEventListener('click', async () => {
-  const text = $('#intake-text').value;
-  let ok = false;
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-      ok = true;
-    }
-  } catch { ok = false; }
-  if (!ok) {
-    const ta = $('#intake-text');
-    ta.focus();
-    ta.select();
-    try { ok = document.execCommand('copy'); } catch { ok = false; }
-  }
+  const ok = await copyTextarea($('#intake-text'));
   toast(ok ? 'Answers copied. Paste them into an email to the show.' : 'Could not copy automatically. The text is selected: press Ctrl+C or Cmd+C.');
 });
 

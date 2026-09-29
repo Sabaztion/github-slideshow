@@ -2,6 +2,8 @@
 // No DOM, no storage access: everything here is deterministic and unit-tested
 // with `node --test guest-manager/tests/`.
 
+import { normalizePlan, normalizeQa, DEFAULT_QUESTION_BANK, normalizeQuestionBank } from './plan.js';
+
 export const APP_ID = 'podcast-guest-manager';
 export const SCHEMA_VERSION = 1;
 export const STORAGE_KEY = 'podcast-guest-manager:v1';
@@ -141,6 +143,11 @@ export function normalizeGuest(raw, { idFn = defaultId } = {}) {
   g.availability = Array.isArray(src.availability)
     ? [...new Set(src.availability.map(String).filter((s) => parseLocal(s)).map((s) => toLocalString(parseLocal(s))))].sort()
     : [];
+  g.freeSlots = Array.isArray(src.freeSlots)
+    ? [...new Set(src.freeSlots.map(String).filter((s) => parseLocal(s)?.hasTime).map((s) => toLocalString(parseLocal(s))))].sort()
+    : [];
+  g.plan = normalizePlan(src.plan);
+  g.qa = normalizeQa(src.qa);
   g.sample = src.sample === true;
   const now = new Date().toISOString();
   g.createdAt = typeof src.createdAt === 'string' ? src.createdAt : now;
@@ -359,7 +366,7 @@ export function suggestSlots(todayYmd, times = ['10:00', '14:00']) {
 /* Email templates                                                     */
 /* ------------------------------------------------------------------ */
 
-export const PLACEHOLDERS = Object.freeze(['guest_name', 'recording_time', 'show_name', 'episode_link']);
+export const PLACEHOLDERS = Object.freeze(['guest_name', 'recording_time', 'show_name', 'episode_link', 'availability_link', 'qa_link']);
 
 export const DEFAULT_TEMPLATES = Object.freeze([
   {
@@ -385,6 +392,18 @@ export const DEFAULT_TEMPLATES = Object.freeze([
     name: 'Thank-you + episode link',
     subject: 'Your {{show_name}} episode is live',
     body: 'Hi {{guest_name}},\n\nThank you again for coming on {{show_name}}. Your episode is out now:\n\n{{episode_link}}\n\nWe would be grateful if you shared it with your audience. Promo clips and artwork are on the way.\n\nWith thanks,\nThe {{show_name}} team'
+  },
+  {
+    id: 'availability',
+    name: 'Availability request',
+    subject: 'When are you free to record for {{show_name}}?',
+    body: 'Hi {{guest_name}},\n\nTo find a recording time for {{show_name}}, could you mark when you are free on this calendar? It takes a minute, and you can see the times in your own time zone:\n\n{{availability_link}}\n\nOnce you send it, I will confirm a time by email.\n\nThanks,\nThe {{show_name}} team'
+  },
+  {
+    id: 'qa',
+    name: 'Pre-interview questions',
+    subject: 'A few questions before we record {{show_name}}',
+    body: 'Hi {{guest_name}},\n\nSo we can plan a great conversation, could you answer a few short questions? Your answers help me introduce you well and ask about the things you care about:\n\n{{qa_link}}\n\nThere are no wrong answers, and a sentence or two each is plenty.\n\nThanks,\nThe {{show_name}} team'
   }
 ]);
 
@@ -395,19 +414,26 @@ export function renderTemplate(text, vars) {
   );
 }
 
-export function templateVars(guest, settings) {
+/**
+ * Placeholder values for one guest. `links` carries per-guest share links
+ * that need the page URL (availabilityLink, qaLink); without them the
+ * placeholders get a readable stand-in.
+ */
+export function templateVars(guest, settings, links = {}) {
   const tz = settings?.timeZone || '';
   const when = guest?.recordingAt ? formatRecording(guest.recordingAt) : '';
   return {
     guest_name: String(guest?.name || '').trim() || 'there',
     recording_time: when ? (tz ? `${when} (${tz})` : when) : 'a time to be confirmed',
     show_name: String(settings?.showName || '').trim() || 'our show',
-    episode_link: String(guest?.episodeLink || '').trim() || '[episode link to come]'
+    episode_link: String(guest?.episodeLink || '').trim() || '[episode link to come]',
+    availability_link: String(links?.availabilityLink || '').trim() || '[availability link]',
+    qa_link: String(links?.qaLink || '').trim() || '[questions link]'
   };
 }
 
-export function renderEmail(template, guest, settings) {
-  const vars = templateVars(guest, settings);
+export function renderEmail(template, guest, settings, links) {
+  const vars = templateVars(guest, settings, links);
   return { subject: renderTemplate(template.subject, vars), body: renderTemplate(template.body, vars) };
 }
 
@@ -439,7 +465,27 @@ export function normalizeTemplates(list) {
 /* ------------------------------------------------------------------ */
 
 export function defaultSettings(timeZone = 'UTC') {
-  return { showName: 'My Podcast', timeZone: isValidTimeZone(timeZone) ? timeZone : 'UTC', hostEmail: '', intakeSlots: [] };
+  return {
+    showName: 'My Podcast', timeZone: isValidTimeZone(timeZone) ? timeZone : 'UTC', hostEmail: '', intakeSlots: [],
+    intakeEndpoint: '', questionBank: DEFAULT_QUESTION_BANK.slice()
+  };
+}
+
+/**
+ * A usable submission endpoint: https (a deployed Apps Script web app URL
+ * looks like https://script.google.com/macros/s/…/exec), or plain http on
+ * localhost for testing. Returns the cleaned URL or ''.
+ */
+export function normalizeEndpoint(url) {
+  const raw = String(url || '').trim();
+  if (!raw || raw.length > 500) return '';
+  let u;
+  try { u = new URL(raw); } catch { return ''; }
+  const local = u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && local)) return '';
+  if (u.username || u.password) return '';
+  u.hash = '';
+  return u.href;
 }
 
 export function normalizeSettings(raw, fallbackTz = 'UTC') {
@@ -451,7 +497,9 @@ export function normalizeSettings(raw, fallbackTz = 'UTC') {
     hostEmail: typeof s.hostEmail === 'string' ? s.hostEmail : '',
     intakeSlots: Array.isArray(s.intakeSlots)
       ? [...new Set(s.intakeSlots.map(String).filter((x) => parseLocal(x)?.hasTime).map((x) => toLocalString(parseLocal(x))))].sort()
-      : []
+      : [],
+    intakeEndpoint: normalizeEndpoint(s.intakeEndpoint),
+    questionBank: Array.isArray(s.questionBank) ? normalizeQuestionBank(s.questionBank) : base.questionBank
   };
 }
 
@@ -719,16 +767,28 @@ export function mailtoForText(to, subject, text, max = MAILTO_BODY_MAX) {
 }
 
 /**
- * Shareable intake link that carries the host's settings in the query string.
+ * Shareable guest link (intake, availability or Q&A page) that carries the
+ * host's public settings in the query string. Only whitelisted fields are
+ * copied: the host's read key is never part of a link.
  * Past slots are left out when `nowLocal` (host time) is given.
+ * `guest` (optional) prefills the guest's id, name and email.
+ * `extra` adds page-specific params (for example the Q&A questions).
  */
-export function buildIntakeUrl(base, settings, { nowLocal } = {}) {
+export function buildIntakeUrl(base, settings, { nowLocal, guest, slots: withSlots = true, extra } = {}) {
   const params = new URLSearchParams();
   if (settings.showName) params.set('show', settings.showName);
   if (settings.timeZone) params.set('tz', settings.timeZone);
   if (settings.hostEmail) params.set('to', settings.hostEmail);
   const slots = nowLocal ? upcomingSlots(settings.intakeSlots, nowLocal) : (settings.intakeSlots || []);
-  if (slots.length) params.set('slots', slots.join(','));
+  if (withSlots && slots.length) params.set('slots', slots.join(','));
+  const api = normalizeEndpoint(settings.intakeEndpoint);
+  if (api) params.set('api', api);
+  if (guest) {
+    if (guest.id) params.set('gid', guest.id);
+    if (guest.name) params.set('name', String(guest.name).trim());
+    if (guest.email) params.set('email', String(guest.email).trim());
+  }
+  for (const [k, v] of Object.entries(extra || {})) if (v) params.set(k, v);
   const q = params.toString();
   return q ? `${base}?${q}` : base;
 }
@@ -748,5 +808,22 @@ export function readIntakeParams(search) {
     const list = slots.split(',').map((s) => s.trim()).filter((s) => parseLocal(s)?.hasTime).map((s) => toLocalString(parseLocal(s)));
     if (list.length) out.intakeSlots = [...new Set(list)].sort();
   }
+  const api = normalizeEndpoint(p.get('api'));
+  if (api) out.endpoint = api;
+  const gid = p.get('gid');
+  if (gid && /^[A-Za-z0-9_-]{1,64}$/.test(gid)) out.guestId = gid;
+  const name = p.get('name');
+  if (name && name.trim()) out.guestName = name.trim().slice(0, 120);
+  const email = p.get('email');
+  if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254) out.guestEmail = email.trim();
   return out;
+}
+
+/** Book `slot` as the recording time. An Outreach guest moves to Booked. */
+export function bookSlot(guest, slot, nowIso = new Date().toISOString()) {
+  const p = parseLocal(slot);
+  if (!p || !p.hasTime) throw new Error(`Invalid slot: ${slot}`);
+  let g = { ...guest, recordingAt: toLocalString(p), updatedAt: nowIso };
+  if (g.stage === 'outreach') g = moveGuest(g, 'booked', nowIso);
+  return g;
 }

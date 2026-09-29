@@ -842,6 +842,17 @@ body.panel-overlay .toast { bottom: 96px; }
 .slot-btn .l { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .slot-btn[aria-pressed="true"] .l { color: #E6E0D3; }
 .nav-mini { display: none; }
+.hp-field { position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+.send-status { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink-2); }
+.send-status:empty { display: none; }
+.delivery-note { font-size: 14px !important; color: var(--muted) !important; }
+.delivery-note:empty { display: none; }
+.panel-note { margin: 0; font-size: 13px; }
+.panel-note a { display: inline-flex; min-height: 44px; align-items: center; }
+.backend-status { margin: 0; font-size: 14px; color: var(--ink-2); }
+.backend-status:empty { display: none; }
+.inline-add input { flex: 1 1 200px; min-width: 0; }
+.fallback-block { display: flex; flex-direction: column; gap: 14px; }
 
 /* ---------------------------------------------------------------- */
 /* Responsive                                                        */

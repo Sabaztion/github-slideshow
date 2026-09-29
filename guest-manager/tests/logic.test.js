@@ -240,8 +240,8 @@ describe('dates', () => {
 });
 
 describe('templates', () => {
-  test('there are four default templates using only the documented placeholders', () => {
-    assert.deepEqual(L.DEFAULT_TEMPLATES.map((t) => t.name), ['Invitation', 'Booking confirmation', 'Recording reminder', 'Thank-you + episode link']);
+  test('the default templates use only the documented placeholders', () => {
+    assert.deepEqual(L.DEFAULT_TEMPLATES.map((t) => t.name), ['Invitation', 'Booking confirmation', 'Recording reminder', 'Thank-you + episode link', 'Availability request', 'Pre-interview questions']);
     for (const t of L.DEFAULT_TEMPLATES) {
       for (const [, key] of `${t.subject} ${t.body}`.matchAll(/\{\{\s*(\w+)\s*\}\}/g)) {
         assert.ok(L.PLACEHOLDERS.includes(key), `${t.id} uses unknown placeholder ${key}`);
@@ -261,7 +261,7 @@ describe('templates', () => {
   test('templateVars uses host time zone and friendly fallbacks', () => {
     const settings = { showName: 'Deep Air', timeZone: 'Europe/Berlin' };
     const v = L.templateVars(guest({ name: 'Lena Brandt', recordingAt: '2026-10-06T14:00', episodeLink: 'https://x.test/1' }), settings);
-    assert.deepEqual(v, { guest_name: 'Lena Brandt', recording_time: 'Tue Oct 6 · 2:00 PM (Europe/Berlin)', show_name: 'Deep Air', episode_link: 'https://x.test/1' });
+    assert.deepEqual(v, { guest_name: 'Lena Brandt', recording_time: 'Tue Oct 6 · 2:00 PM (Europe/Berlin)', show_name: 'Deep Air', episode_link: 'https://x.test/1', availability_link: '[availability link]', qa_link: '[questions link]' });
     const empty = L.templateVars(guest({ name: '' }), {});
     assert.equal(empty.guest_name, 'there');
     assert.equal(empty.recording_time, 'a time to be confirmed');
@@ -284,7 +284,7 @@ describe('templates', () => {
 
   test('normalizeTemplates keeps edits and restores missing defaults', () => {
     const t = L.normalizeTemplates([{ id: 'invitation', subject: 'Custom', body: 'B' }, { id: 'rogue', subject: 'x', body: 'y' }]);
-    assert.equal(t.length, 4);
+    assert.equal(t.length, L.DEFAULT_TEMPLATES.length);
     assert.equal(t[0].subject, 'Custom');
     assert.equal(t[1].subject, L.DEFAULT_TEMPLATES[1].subject);
     assert.ok(!t.some((x) => x.id === 'rogue'));
@@ -295,7 +295,7 @@ describe('storage serialization', () => {
   test('initial state has settings, templates and labelled samples', () => {
     const s = L.createInitialState({ timeZone: 'Europe/Berlin', today: '2026-09-28', idFn });
     assert.equal(s.settings.timeZone, 'Europe/Berlin');
-    assert.equal(s.templates.length, 4);
+    assert.equal(s.templates.length, L.DEFAULT_TEMPLATES.length);
     assert.ok(s.guests.length >= 5);
     assert.ok(s.guests.every((g) => g.sample === true));
     for (const id of L.STAGE_IDS) assert.ok(s.guests.some((g) => g.stage === id), `sample for ${id}`);
@@ -334,7 +334,7 @@ describe('storage serialization', () => {
     assert.equal(s.settings.timeZone, 'UTC');
     assert.equal(s.settings.showName, 'My Podcast');
     assert.deepEqual(s.settings.intakeSlots, ['2026-10-05T10:00']);
-    assert.equal(s.templates.length, 4);
+    assert.equal(s.templates.length, L.DEFAULT_TEMPLATES.length);
   });
 
   test('upsert, remove and clearSamples', () => {
