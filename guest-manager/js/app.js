@@ -5,7 +5,7 @@ import {
   sortGuests, formatRecording, formatDay, formatTime, nowInZone, isValidTimeZone, shiftMonth,
   monthLabel, monthGrid, groupByDay, WEEKDAY_NAMES, renderEmail, buildMailto, serializeState,
   parseState, upsertGuest, removeGuest, clearSamples, hasSamples, createInitialState, suggestSlots,
-  parseLocal, toLocalString, buildIntakeUrl, countByStage
+  parseLocal, toLocalString, buildIntakeUrl, countByStage, isValidEmail, softUrlWarning, hasNoRelease
 } from './logic.js';
 import { loadState, loadStoredState, saveState, browserTimeZone, STORAGE_KEY, unreadableData, releaseUnreadable } from './store.js';
 
@@ -233,6 +233,11 @@ function sampleTag() {
   return h('span', { class: 'tag-sample', title: 'Sample guest' }, 'Sample');
 }
 
+/** Shown when a guest submitted the intake form without agreeing to the release. */
+function noReleaseTag() {
+  return h('span', { class: 'tag-warn', title: 'The guest did not agree to the recording release on the intake form' }, 'No release');
+}
+
 function guestCard(g) {
   const p = prepProgress(g);
   const next = nextStage(g.stage);
@@ -246,6 +251,7 @@ function guestCard(g) {
       )
     ),
     g.topic ? h('p', { class: 'card-topic' }, g.topic) : null,
+    hasNoRelease(g) ? h('p', { class: 'card-flags' }, noReleaseTag()) : null,
     h('div', { class: 'card-meta' },
       h('span', null, cardWhen(g)),
       h('span', null, `${p.done}/${p.total} prep`)
@@ -403,7 +409,8 @@ function renderPanel() {
         h('label', { class: 'field' }, h('span', { class: 'sr-only' }, 'Stage'),
           h('select', { id: 'panel-stage', 'aria-label': 'Stage' }, STAGES.map((s) => h('option', { value: s.id, selected: s.id === g.stage }, s.label)))
         ),
-        g.sample ? sampleTag() : null
+        g.sample ? sampleTag() : null,
+        hasNoRelease(g) ? noReleaseTag() : null
       ),
 
       h('section', { class: 'panel-section', 'aria-labelledby': 'h-details' },
@@ -495,6 +502,22 @@ function syncOverlay() {
   backdrop.hidden = !overlay;
   nav.inert = overlay;
   main.inert = overlay;
+  // The skip link lives outside #app, so it must go inert with the rest of the page.
+  const skip = $('.skip-link');
+  if (skip) skip.inert = overlay;
+  document.body.classList.toggle('panel-overlay', overlay);
+  // As a slide-over sheet the panel is a modal dialog; announce it as one.
+  if (overlay) {
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-labelledby', 'panel-name');
+    panel.removeAttribute('aria-label');
+  } else {
+    panel.removeAttribute('role');
+    panel.removeAttribute('aria-modal');
+    panel.removeAttribute('aria-labelledby');
+    panel.setAttribute('aria-label', 'Guest details');
+  }
 }
 
 function openGuest(id) {
@@ -523,6 +546,41 @@ function closePanel({ restore = true } = {}) {
   }
 }
 
+function commitPendingStage() {
+  const g = findGuest(ui.selectedId);
+  const value = ui.stagePending;
+  ui.stagePending = null;
+  if (g && value && value !== g.stage) {
+    moveTo(g.id, value);
+    $('#panel-stage')?.focus();
+  }
+}
+
+/** Non-blocking hint under a panel field whose value looks wrong. */
+function checkPanelField(input) {
+  const key = input.dataset.field;
+  let msg = '';
+  if (key === 'email' && input.value.trim() && !isValidEmail(input.value)) msg = 'This doesn’t look like an email address (name@example.com).';
+  if (key === 'episodeLink') msg = softUrlWarning(input.value);
+  if (key === 'social') msg = softUrlWarning(input.value, { allowHandle: true });
+  if (!['email', 'episodeLink', 'social'].includes(key)) return;
+  const id = `${input.id}-warn`;
+  let out = document.getElementById(id);
+  if (!msg) {
+    input.removeAttribute('aria-invalid');
+    input.removeAttribute('aria-describedby');
+    out?.remove();
+    return;
+  }
+  if (!out) {
+    out = h('span', { class: 'field-error', id });
+    input.insertAdjacentElement('afterend', out);
+  }
+  out.textContent = msg;
+  input.setAttribute('aria-invalid', 'true');
+  input.setAttribute('aria-describedby', id);
+}
+
 function initPanel() {
   panel.addEventListener('input', (e) => {
     const field = e.target.dataset.field;
@@ -537,6 +595,9 @@ function initPanel() {
     const g = findGuest(ui.selectedId);
     if (!g) return;
     if (e.target.id === 'panel-stage') {
+      // Arrow keys on a closed select fire "change" on every step. After a
+      // keyboard change, wait for Enter or leaving the field before moving.
+      if (ui.stageKeyed) { ui.stagePending = e.target.value; return; }
       moveTo(g.id, e.target.value);
     } else if (e.target.dataset.check) {
       saveGuest(toggleCheck(g, e.target.dataset.check, nowIso()));
@@ -582,6 +643,27 @@ function initPanel() {
     } else if (action === 'focus-email') {
       $('#f-email').focus();
     }
+  });
+
+  panel.addEventListener('keydown', (e) => {
+    if (e.target.id !== 'panel-stage') return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitPendingStage();
+    } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key) || e.key.length === 1) {
+      ui.stageKeyed = true;
+    }
+  });
+  panel.addEventListener('pointerdown', (e) => {
+    if (e.target.id === 'panel-stage') ui.stageKeyed = false;
+  });
+  panel.addEventListener('focusout', (e) => {
+    if (e.target.id === 'panel-stage') {
+      commitPendingStage();
+      ui.stageKeyed = false;
+    }
+    // Soft checks on email and link fields once the person leaves them.
+    if (e.target.dataset?.field) checkPanelField(e.target);
   });
 
   backdrop.addEventListener('click', () => closePanel());
@@ -815,8 +897,16 @@ function renderTemplates() {
 function updateTemplate(id, patch) {
   commit({ ...state, templates: state.templates.map((t) => (t.id === id ? { ...t, ...patch } : t)) }, { main: false });
   renderTemplatePreview();
+  // Changes are saved at once; the status settles after typing pauses so a
+  // screen reader isn't told "saved" on every keystroke.
   const saved = $('#tpl-saved');
-  if (saved) saved.textContent = 'All changes saved';
+  if (!saved) return;
+  if (saved.textContent !== 'Saving…') saved.textContent = 'Saving…';
+  clearTimeout(updateTemplate.timer);
+  updateTemplate.timer = setTimeout(() => {
+    const el = $('#tpl-saved');
+    if (el) el.textContent = `Saved at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  }, 700);
 }
 
 function initTemplates() {
@@ -920,8 +1010,9 @@ function renderSettings() {
           h('span', { class: 'hint' }, 'Carries your show name, time zone, email and times, so a remote guest sees the right details.'),
           h('div', { class: 'share-url', id: 'share-url' }, intakeUrl())
         ),
+        h('p', { class: 'note-warn', id: 'no-email-warn', hidden: !!s.hostEmail }, 'No host email is set, so a guest who emails their answers will have to type your address themselves. Add your email above.'),
         h('div', { class: 'btn-row' },
-          h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'copy-intake' } }, 'Copy link'),
+          h('button', { type: 'button', class: 'btn btn-outline', dataset: { action: 'copy-intake' }, 'aria-describedby': s.hostEmail ? null : 'no-email-warn' }, 'Copy link'),
           h('a', { class: 'btn btn-quiet', id: 'open-intake', href: intakeUrl(), target: '_blank', rel: 'noopener' }, 'Open form ↗')
         )
       ),
@@ -946,6 +1037,13 @@ function updateSettings(patch, { rerender = false } = {}) {
   if (share) share.textContent = intakeUrl();
   const open = $('#open-intake');
   if (open) open.href = intakeUrl();
+  const warn = $('#no-email-warn');
+  if (warn) {
+    warn.hidden = !!state.settings.hostEmail;
+    const copy = $('[data-action="copy-intake"]');
+    if (state.settings.hostEmail) copy?.removeAttribute('aria-describedby');
+    else copy?.setAttribute('aria-describedby', 'no-email-warn');
+  }
   document.title = `${VIEWS[ui.view].title} · ${state.settings.showName} · Guest Manager`;
 }
 
@@ -955,6 +1053,13 @@ function initSettings() {
     const key = e.target.dataset.setting;
     if (key === 'showName') updateSettings({ showName: e.target.value.trim() ? e.target.value : 'My Podcast' });
     else if (key === 'hostEmail') updateSettings({ hostEmail: e.target.value.trim() });
+  });
+  view.addEventListener('focusout', (e) => {
+    // An emptied show name falls back to the saved one; show it rather than leaving the field blank.
+    if (e.target.dataset.setting === 'showName' && !e.target.value.trim()) {
+      e.target.value = state.settings.showName;
+      toast(`The show name can’t be empty, so it stays “${state.settings.showName}”.`);
+    }
   });
   view.addEventListener('change', (e) => {
     if (e.target.dataset.setting === 'timeZone' && isValidTimeZone(e.target.value)) {
@@ -966,8 +1071,10 @@ function initSettings() {
   view.addEventListener('click', async (e) => {
     const rm = e.target.closest('[data-remove-slot]');
     if (rm) {
-      updateSettings({ intakeSlots: state.settings.intakeSlots.filter((s) => s !== rm.dataset.removeSlot) }, { rerender: true });
+      const slot = rm.dataset.removeSlot;
+      updateSettings({ intakeSlots: state.settings.intakeSlots.filter((s) => s !== slot) }, { rerender: true });
       $('#slot-new').focus();
+      toast(`Removed ${formatDay(slot)} · ${formatTime(slot)}.`);
       return;
     }
     const action = e.target.closest('[data-action]')?.dataset.action;
@@ -988,8 +1095,10 @@ function initSettings() {
       $('[data-action="suggest-slots"]').focus();
       toast('Added suggested times for the coming week.');
     } else if (action === 'clear-slots') {
+      const n = state.settings.intakeSlots.length;
       updateSettings({ intakeSlots: [] }, { rerender: true });
       $('[data-action="suggest-slots"]').focus();
+      toast(`Cleared ${n} time${n === 1 ? '' : 's'}. The form will suggest times instead.`);
     } else if (action === 'copy-intake') {
       toast((await copyText(intakeUrl())) ? 'Intake link copied.' : 'Could not copy. Select the link text and copy it yourself.');
     } else if (action === 'export') {
@@ -1023,6 +1132,18 @@ function initSettings() {
   });
 }
 
+/** Tell screen reader users how many guests match, once typing pauses. */
+function announceSearch() {
+  clearTimeout(announceSearch.timer);
+  announceSearch.timer = setTimeout(() => {
+    const q = ui.query.trim();
+    const n = q ? filterGuests(state.guests, q).length : state.guests.length;
+    const out = $('#search-status');
+    if (!q) out.textContent = `Showing all ${n} guest${n === 1 ? '' : 's'}.`;
+    else out.textContent = n ? `${n} ${n === 1 ? 'guest matches' : 'guests match'} “${q}”.` : `No guests match “${q}”.`;
+  }, 400);
+}
+
 function clearSampleData() {
   const n = state.guests.filter((g) => g.sample).length;
   if (!n) return;
@@ -1039,7 +1160,10 @@ function clearSampleData() {
 function openAddDialog() {
   addForm.reset();
   $('#add-error').hidden = true;
-  addForm.elements.name.removeAttribute('aria-invalid');
+  for (const el of [addForm.elements.name, addForm.elements.email]) {
+    el.removeAttribute('aria-invalid');
+    el.removeAttribute('aria-describedby');
+  }
   addForm.elements.stage.value = 'outreach';
   if (typeof addDialog.showModal === 'function') addDialog.showModal();
   else addDialog.setAttribute('open', '');
@@ -1057,21 +1181,28 @@ function initAddDialog() {
     e.preventDefault();
     const f = addForm.elements;
     const name = f.name.value.trim();
-    if (!name) {
-      const err = $('#add-error');
-      err.textContent = 'Enter the guest’s name.';
+    const email = f.email.value.trim();
+    const err = $('#add-error');
+    for (const el of [f.name, f.email]) {
+      el.removeAttribute('aria-invalid');
+      el.removeAttribute('aria-describedby');
+    }
+    const bad = !name ? [f.name, 'Enter the guest’s name.'] : email && !isValidEmail(email) ? [f.email, 'Enter a valid email address, like name@example.com, or leave it empty.'] : null;
+    if (bad) {
+      err.textContent = bad[1];
       err.hidden = false;
-      f.name.setAttribute('aria-invalid', 'true');
-      f.name.setAttribute('aria-describedby', 'add-error');
-      f.name.focus();
+      bad[0].setAttribute('aria-invalid', 'true');
+      bad[0].setAttribute('aria-describedby', 'add-error');
+      bad[0].focus();
       return;
     }
+    err.hidden = true;
     const p = parseLocal(f.recordingAt.value);
     const guest = createGuest({
       name,
       role: f.role.value.trim(),
       topic: f.topic.value.trim(),
-      email: f.email.value.trim(),
+      email,
       stage: f.stage.value,
       recordingAt: p && p.hasTime ? toLocalString(p) : ''
     });
@@ -1105,6 +1236,7 @@ function init() {
   search.addEventListener('input', () => {
     ui.query = search.value;
     renderMain();
+    announceSearch();
   });
 
   document.addEventListener('click', (e) => {

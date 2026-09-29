@@ -186,7 +186,7 @@ h1, h2, h3 { text-wrap: balance; }
   border: 1px solid var(--control-line);
   border-radius: 999px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -452,7 +452,23 @@ h1, h2, h3 { text-wrap: balance; }
 .card-topic { margin: 0; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
 .card-meta { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .card-meta > span { white-space: nowrap; }
-.card-role .tag-sample { padding: 0 5px; font-size: 9px; vertical-align: 1px; }
+.card-role .tag-sample { padding: 0 5px; font-size: 11px; vertical-align: 1px; }
+.tag-warn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid #A3230E;
+  border-radius: 999px;
+  background: #FBEDE7;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6E200A;
+  white-space: nowrap;
+}
+.card-flags { margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .bar { display: block; width: 100%; height: 4px; border-radius: 999px; background: var(--track); overflow: hidden; }
 .bar > span { display: block; height: 4px; background: var(--ink); }
 .bar.complete > span { background: var(--ok); }
@@ -816,6 +832,16 @@ dialog.modal::backdrop { background: rgba(28, 27, 24, 0.45); }
   box-shadow: 0 10px 30px rgba(28, 27, 24, 0.3);
 }
 .toast:empty { display: none; }
+/* Never swallow taps on the buttons underneath. */
+.toast { pointer-events: none; }
+/* With the panel as a slide-over sheet, keep toasts above its footer buttons. */
+body.panel-overlay .toast { bottom: 96px; }
+.note-warn { margin: 0; padding: 10px 12px; border-left: 4px solid #A3230E; border-radius: 6px; background: #FBEDE7; font-size: 13px; line-height: 1.5; color: #6E200A; }
+.field-hint-warn { font-size: 13px; font-weight: 500; color: #6E200A; }
+.hint.small { margin: 0; font-size: 13px; }
+.slot-btn .l { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.slot-btn[aria-pressed="true"] .l { color: #E6E0D3; }
+.nav-mini { display: none; }
 
 /* ---------------------------------------------------------------- */
 /* Responsive                                                        */
@@ -858,13 +884,15 @@ dialog.modal::backdrop { background: rgba(28, 27, 24, 0.45); }
   }
   .brand { padding: 0 4px; flex-shrink: 1; max-width: 34%; }
   .brand-name { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Links wrap onto a second row instead of scrolling sideways out of sight. */
   .nav-list {
     flex-direction: row;
+    flex-wrap: wrap;
     flex: 1 1 auto;
     min-width: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
+    gap: 2px 4px;
   }
+  .nav-mini { display: list-item; }
   .nav-link { padding: 0 10px; white-space: nowrap; font-size: 13px; }
   .nav-link svg { display: none; }
   .intake-card { display: none; }

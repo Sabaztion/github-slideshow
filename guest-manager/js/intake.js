@@ -3,7 +3,7 @@
 // text so a remote guest can email them to the host.
 import {
   SETUP_OPTIONS, validateIntake, intakeToGuest, intakeToText, readIntakeParams,
-  nowInZone, formatDay, formatTime, mailtoForText, createInitialState, upsertGuest, isValidTimeZone, slotsToOffer
+  nowInZone, formatDay, formatTime, mailtoForText, convertZone, softUrlWarning, createInitialState, upsertGuest, isValidTimeZone, slotsToOffer
 } from './logic.js';
 import { inspectStoredState, loadStoredState, saveState, browserTimeZone } from './store.js';
 
@@ -21,6 +21,11 @@ const settings = {
 // Past times are never offered; with none left the form suggests new ones.
 const slots = slotsToOffer(settings.intakeSlots, nowInZone(settings.timeZone));
 
+// Opened from a shared link (it carries the host's settings): the guest has
+// no pipeline to go back to.
+const fromShare = new URLSearchParams(window.location.search).toString() !== '';
+const guestZone = browserTimeZone();
+
 const form = $('#intake-form');
 const done = $('#intake-done');
 const picked = new Set();
@@ -35,6 +40,10 @@ function toast(message) {
 }
 
 function renderStatic() {
+  if (fromShare) $('.back-link').hidden = true;
+  $('#guest-tz-note').textContent = guestZone !== settings.timeZone
+    ? `Your own time (${guestZone.replace(/_/g, ' ')}) is shown under each option.`
+    : '';
   for (const el of document.querySelectorAll('[data-show-name]')) el.textContent = settings.showName;
   for (const el of document.querySelectorAll('[data-tz]')) el.textContent = settings.timeZone.replace(/_/g, ' ');
   document.title = `Guest intake · ${settings.showName}`;
@@ -52,6 +61,16 @@ function renderStatic() {
     t.className = 't';
     t.textContent = formatTime(s);
     b.append(d, t);
+    // Also show the guest's own local time when their zone differs.
+    if (guestZone !== settings.timeZone) {
+      const mine = convertZone(s, settings.timeZone, guestZone);
+      if (mine) {
+        const l = document.createElement('span');
+        l.className = 'l';
+        l.textContent = `${formatDay(mine) === formatDay(s) ? '' : `${formatDay(mine)}, `}${formatTime(mine)} your time`;
+        b.append(l);
+      }
+    }
     return b;
   }));
 
@@ -175,6 +194,7 @@ form.addEventListener('submit', (e) => {
   const text = intakeToText(a, settings);
   $('#intake-text').value = text;
   const n = a.availability.length;
+  $('#done-consent').hidden = a.consent;
   $('#done-summary').textContent = n
     ? `We’ll confirm one of your ${n} picked time${n === 1 ? '' : 's'} by email, along with the recording guide.`
     : 'We’ll email you to find a recording time, along with the recording guide.';
@@ -184,9 +204,12 @@ form.addEventListener('submit', (e) => {
   form.hidden = true;
   done.hidden = false;
   $('#done-title').focus();
-  if (saved !== 'saved') {
-    $('#done-local-note').textContent = 'Your answers could not be saved in this browser. Please send them to the show: copy them below, or open them in your email app.';
-  }
+  const sendTo = settings.hostEmail
+    ? `open them in your email app (addressed to ${settings.hostEmail})`
+    : 'paste them into an email to the person who invited you (this link has no show email address, so you’ll need to add theirs)';
+  $('#done-local-note').textContent = saved === 'saved'
+    ? `Your answers were saved in this browser’s guest list (handy if the host is filling this in with you). If you’re a guest on your own device, please send your answers to the show: copy them below, or ${sendTo}.`
+    : `Your answers could not be saved in this browser. Please send them to the show: copy them below, or ${sendTo}.`;
   if (saved === 'blocked') toast('This browser blocked saving, so please copy your answers and email them.');
   else if (saved === 'unreadable') toast('This browser’s guest list could not be read, so your answers were not saved here. Please copy them and email them.');
 });
@@ -217,8 +240,23 @@ $('#copy-text').addEventListener('click', async () => {
 
 // "Read the release" opens the release text.
 for (const a of document.querySelectorAll('a[href="#release"]')) {
-  a.addEventListener('click', () => { $('#release').open = true; });
+  a.addEventListener('click', (e) => {
+    e.preventDefault();
+    const release = $('#release');
+    release.open = true;
+    release.querySelector('summary').focus();
+  });
 }
+
+// Soft check on the website field: a hint, never a blocker.
+$('#in-social').addEventListener('blur', (e) => {
+  const msg = softUrlWarning(e.target.value, { allowHandle: true });
+  const out = $('#warn-social');
+  out.textContent = msg;
+  out.hidden = !msg;
+  if (msg) e.target.setAttribute('aria-describedby', 'warn-social');
+  else e.target.removeAttribute('aria-describedby');
+});
 
 renderStatic();
 updateSlotCount();

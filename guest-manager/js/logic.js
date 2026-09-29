@@ -571,6 +571,52 @@ export function validateIntake(a) {
   return errors;
 }
 
+export function isValidEmail(value) {
+  const v = String(value || '').trim();
+  return v.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+/**
+ * Soft check for link fields: '' when the value is empty or an http(s) URL,
+ * else a short hint. With allowHandle, social handles like "@name" pass.
+ */
+export function softUrlWarning(value, { allowHandle = false } = {}) {
+  const v = String(value || '').trim();
+  if (!v || safeHttpUrl(v)) return '';
+  if (allowHandle && /^@?[\w.-]{1,60}$/.test(v)) return '';
+  return allowHandle
+    ? 'This doesn’t look like a web address (https://…) or a handle like @name.'
+    : 'This doesn’t look like a web address. Links should start with https://';
+}
+
+/** An intake guest who did not agree to the recording release. */
+export function hasNoRelease(guest) {
+  return guest?.source === 'intake' && guest?.checks?.release !== true;
+}
+
+/** UTC milliseconds for a wall-clock time ("YYYY-MM-DDTHH:mm") in `timeZone`. */
+export function zonedToUtcMs(str, timeZone) {
+  const p = parseLocal(str);
+  if (!p) return NaN;
+  const guess = Date.UTC(p.y, p.m - 1, p.d, p.hh, p.mm);
+  let t = guess;
+  for (let i = 0; i < 3; i++) {
+    const q = parseLocal(nowInZone(timeZone, new Date(t)));
+    const diff = Date.UTC(q.y, q.m - 1, q.d, q.hh, q.mm) - guess;
+    if (diff === 0) break;
+    t -= diff;
+  }
+  return t;
+}
+
+/** The same instant as a wall-clock time in another zone. */
+export function convertZone(str, fromZone, toZone) {
+  const p = parseLocal(str);
+  if (!p) return '';
+  if (fromZone === toZone) return toLocalString(p);
+  return nowInZone(toZone, new Date(zonedToUtcMs(str, fromZone)));
+}
+
 /** Turn intake answers into a guest record (stage: Outreach). */
 export function intakeToGuest(a, { idFn = defaultId, nowIso = new Date().toISOString(), id } = {}) {
   const notes = String(a.notes || '').trim();

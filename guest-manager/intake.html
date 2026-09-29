@@ -26,7 +26,8 @@
   <section class="intake-done" id="intake-done" aria-labelledby="done-title" hidden>
     <h2 id="done-title" tabindex="-1">Thanks, you’re in the queue.</h2>
     <p id="done-summary">We’ll confirm one of your picked times by email, along with the recording guide.</p>
-    <p id="done-local-note"><strong>This form has no server.</strong> Your answers were saved in this browser’s guest list (handy if the host is filling this in with you). If you’re a guest on your own device, please send your answers to the show: copy them below, or open them in your email app.</p>
+    <p id="done-local-note">Your answers were saved in this browser’s guest list (handy if the host is filling this in with you). If you’re a guest on your own device, please send your answers to the show: copy them below, or open them in your email app.</p>
+    <p class="note-warn" id="done-consent" hidden>You didn’t tick the recording release. That’s fine for now: the show will follow up about it before recording.</p>
     <label class="field">Your answers as text
       <textarea class="input" id="intake-text" rows="12" readonly></textarea>
     </label>
@@ -54,7 +55,8 @@
         <span class="field-error" id="err-email" hidden></span>
       </label>
       <label class="field">Website or social link
-        <input type="url" name="social" placeholder="https://" autocomplete="url">
+        <input type="url" name="social" id="in-social" placeholder="https://" autocomplete="url">
+        <span class="field-hint-warn" id="warn-social" hidden></span>
       </label>
       <label class="field"><span>Role or title <span class="hint">(optional)</span></span>
         <input type="text" name="role" autocomplete="organization-title">
@@ -83,7 +85,8 @@
     </div>
 
     <fieldset class="group">
-      <legend>Pick every time that works <span class="hint">(shown in <span data-tz>your time zone</span>)</span></legend>
+      <legend>Pick every time that works <span class="hint">(shown in the host’s time zone, <span data-tz>UTC</span>)</span></legend>
+      <p class="hint small" id="guest-tz-note"></p>
       <div class="grid-3" id="slots"></div>
     </fieldset>
 

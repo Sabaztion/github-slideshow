@@ -4,3 +4,4 @@
 import './logic.test.js';
 import './review.test.js';
 import './store.test.js';
+import './a11y.test.js';

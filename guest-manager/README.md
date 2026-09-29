@@ -81,7 +81,7 @@ This needs Node 18 or later. On Node 22 a directory argument loads `tests/index.
 
 ## Accessibility
 
-The app uses real buttons, links and labels throughout. Every control is keyboard usable with a visible focus ring, and targets are at least 44 px. Text contrast is at least 4.5:1 and form control borders at least 3:1. The board has a Move button as an alternative to dragging. Sortable table headers expose `aria-sort`. When the details panel is a slide-over sheet on narrower screens, the rest of the page is made inert.
+The app uses real buttons, links and labels throughout. Every control is keyboard usable with a visible focus ring, and targets are at least 44 px. Text contrast is at least 4.5:1 and form control borders at least 3:1. The board has a Move button as an alternative to dragging. Sortable table headers expose `aria-sort`. When the details panel is a slide-over sheet on narrower screens it is announced as a modal dialog (`role="dialog"`, `aria-modal`), and the rest of the page, including the skip link, is made inert; toasts move above the panel's footer and never block taps. Search results are announced through a polite status message once typing pauses. The stage picker in the panel only moves a guest when you press Enter or leave it after using the arrow keys. Email and link fields get a gentle inline check. Intake guests who didn't agree to the release are flagged with a "No release" tag on their card and panel. On the intake form each time is also shown in the guest's own time zone.
 
 ## Jekyll / GitHub Pages note
 
