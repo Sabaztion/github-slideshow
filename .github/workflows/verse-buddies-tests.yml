@@ -22,13 +22,21 @@ jobs:
         with:
           node-version: 22
 
+      # Installed inside bible-memory/tests: an install at the repo root would delete the
+      # tracked node_modules/reveal.js that the slideshow uses.
       - name: Install Playwright and Chromium
+        working-directory: bible-memory/tests
         run: |
-          npm install --no-save --no-package-lock playwright@1.56.1
+          npm install --no-package-lock
           npx playwright install --with-deps chromium
 
+      # Pinned to a commit and checksum so the file can't change under us. If the download
+      # fails, only the KJV check is skipped; the other tests still run.
       - name: Download KJV text for the word-for-word verse check
-        run: curl -fsSL https://raw.githubusercontent.com/thiagobodruk/bible/master/json/en_kjv.json -o "$RUNNER_TEMP/kjv.json"
+        continue-on-error: true
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/thiagobodruk/bible/093b4727bf632181c9e096f4cf4141cc387371d0/json/en_kjv.json -o "$RUNNER_TEMP/kjv.json"
+          echo "fc99486e7d3b86e4ad1f0f424b36ab41b4ec4db858a776bd13aee1b7910f136b  $RUNNER_TEMP/kjv.json" | sha256sum -c - || { rm -f "$RUNNER_TEMP/kjv.json"; echo "::warning::KJV download failed or changed; the KJV check will be skipped."; exit 1; }
 
       - name: Run tests
         env:

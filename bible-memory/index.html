@@ -161,9 +161,11 @@
   .verse-text { font-size: 26px; line-height: 1.6; font-weight: 600; }
   .word { display: inline-block; margin: 0 2px; }
   .blank {
-    display: inline-block; min-width: 2.2em; border-bottom: 4px solid var(--primary);
-    color: transparent; border-radius: 2px; margin: 0 4px; cursor: pointer; user-select: none;
+    display: inline-block; min-width: 2.2em; height: 1.3em; vertical-align: bottom;
+    border-bottom: 4px solid var(--primary); border-radius: 2px; margin: 0 4px;
+    cursor: pointer; user-select: none;
   }
+  .blank.peeked { height: auto; vertical-align: baseline; }
   .blank.peeked { color: var(--primary); border-bottom-color: var(--sun); }
   .hint { color: var(--muted); font-size: 16px; margin-top: 10px; }
 
@@ -880,11 +882,30 @@
     try {
       var raw = localStorage.getItem(STORE_KEY);
       if (raw) {
-        var data = JSON.parse(raw);
-        return { stars: data.stars || {}, custom: data.custom || [] };
+        return clean(JSON.parse(raw));
       }
     } catch (e) {}
     return { stars: {}, custom: [] };
+  }
+  // Keep only well-formed saved data, so an old or hand-edited save can't break the app.
+  function clean(data) {
+    var out = { stars: {}, custom: [] };
+    if (!data || typeof data !== "object") return out;
+    if (data.stars && typeof data.stars === "object" && !Array.isArray(data.stars)) {
+      Object.keys(data.stars).forEach(function (id) {
+        var n = Math.floor(Number(data.stars[id]));
+        if (n > 0) out.stars[id] = Math.min(n, MAX_STARS);
+      });
+    }
+    if (Array.isArray(data.custom)) {
+      data.custom.forEach(function (v) {
+        if (v && typeof v.id === "string" && typeof v.ref === "string" && typeof v.text === "string" &&
+            v.ref.trim() && v.text.trim()) {
+          out.custom.push({ id: v.id, emoji: "📜", ref: v.ref.trim(), text: v.text.trim().replace(/\s+/g, " "), custom: true });
+        }
+      });
+    }
+    return out;
   }
   var state = load();
   function save() {
@@ -908,8 +929,9 @@
     return n;
   }
   function words(text) { return text.trim().split(/\s+/); }
-  // Strip punctuation so "Son," matches "Son" when checking order.
-  function bare(w) { return w.replace(/[^A-Za-z0-9']/g, "").toLowerCase(); }
+  // Strip punctuation so "Son," matches "Son" when checking order. Unicode-aware so words in
+  // any language compare correctly; a token with no letters (like "—") compares as itself.
+  function bare(w) { return w.replace(/[^\p{L}\p{M}\p{N}']/gu, "").toLowerCase() || w; }
   function shuffle(arr) {
     var a = arr.slice();
     for (var i = a.length - 1; i > 0; i--) {
@@ -960,10 +982,11 @@
 
   // Same verse for everyone all week; cycles through the 52 built-ins over a year.
   function verseOfWeek() {
+    // Whole weeks since Monday 1 Jan 2024 (local date, so daylight saving can't shift it).
     var now = new Date();
-    var start = new Date(now.getFullYear(), 0, 1);
-    var week = Math.floor((now - start) / (7 * 24 * 60 * 60 * 1000));
-    return BUILT_IN[week % BUILT_IN.length];
+    var days = Math.floor((Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - Date.UTC(2024, 0, 1)) / 86400000);
+    var week = Math.floor(days / 7);
+    return BUILT_IN[((week % BUILT_IN.length) + BUILT_IN.length) % BUILT_IN.length];
   }
 
   function renderWeek() {
@@ -1056,7 +1079,6 @@
 
   // ---- practice ----
   var current = null;
-  var mode = "read";
 
   function openVerse(id) {
     current = findVerse(id);
@@ -1087,7 +1109,6 @@
   });
 
   function setMode(m) {
-    mode = m;
     Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (t) {
       t.setAttribute("aria-selected", t.getAttribute("data-mode") === m ? "true" : "false");
     });
@@ -1217,11 +1238,19 @@
       text.innerHTML = "";
       ws.forEach(function (w, i) {
         if (hidden[i]) {
-          var b = el("span", "blank", w);
+          var b = el("span", "blank");
+          var blankWidth = Math.max(2, Array.from(w).length) * 0.62 + "em";
+          b.setAttribute("data-word", w);
+          b.style.width = blankWidth;
           b.setAttribute("role", "button");
           b.setAttribute("tabindex", "0");
           b.setAttribute("aria-label", "hidden word, tap to peek");
-          var peek = function () { b.classList.toggle("peeked"); };
+          // The word is only put in the page when peeked, so high-contrast modes can't reveal it.
+          var peek = function () {
+            var on = b.classList.toggle("peeked");
+            b.textContent = on ? w : "";
+            b.style.width = on ? "" : blankWidth;
+          };
           b.addEventListener("click", peek);
           b.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); peek(); } });
           text.appendChild(b);
@@ -1247,15 +1276,15 @@
     var ws = words(current.text);
     var box = el("div", "letters");
     ws.forEach(function (w) {
-      var first = (w.match(/[A-Za-z0-9]/) || [w[0]])[0];
-      var tail = w.replace(/^[^A-Za-z0-9]*[A-Za-z0-9]/, "");
-      var punct = (tail.match(/[^A-Za-z0-9']+$/) || [""])[0];
-      var s = el("span", "fl", first + punct);
+      // [whole, leading punctuation, first letter, rest of word, trailing punctuation]
+      var m = w.match(/^([^\p{L}\p{N}]*)([\p{L}\p{N}])(.*?)([^\p{L}\p{M}\p{N}']*)$/u);
+      var shortForm = m ? m[1] + m[2] + m[4] : w;
+      var s = el("span", "fl", shortForm);
       s.setAttribute("role", "button");
       s.setAttribute("tabindex", "0");
       var flip = function () {
         var showing = s.classList.toggle("show");
-        s.textContent = showing ? w : first + punct;
+        s.textContent = showing ? w : shortForm;
       };
       s.addEventListener("click", flip);
       s.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); flip(); } });
@@ -1276,6 +1305,7 @@
     var ws = words(current.text);
     var pos = 0;
     var mistakes = 0;
+    var hints = 0;
 
     stage.appendChild(el("p", "hint", "Tap the words in the right order to build the verse."));
     var built = el("div", "built");
@@ -1317,6 +1347,7 @@
 
     hintBtn.addEventListener("click", function () {
       if (pos >= ws.length) return;
+      hints++;
       for (var i = 0; i < chips.length; i++) {
         var ch = chips[i];
         if (!ch.btn.classList.contains("used") && bare(ch.item.w) === bare(ws[pos])) {
@@ -1330,7 +1361,8 @@
 
     function finish() {
       var before = starsFor(current.id);
-      var earned = before < MAX_STARS;
+      // A star means the child recalled the verse, so rounds that used a hint don't earn one.
+      var earned = before < MAX_STARS && hints === 0;
       if (earned) {
         state.stars[current.id] = before + 1;
         save();
@@ -1344,9 +1376,10 @@
       var line;
       if (now >= MAX_STARS && earned) line = "You memorized " + current.ref + "! Amazing!";
       else if (now >= MAX_STARS) line = "Still a champion! You know " + current.ref + "!";
+      else if (!earned) line = "Great practice! Now try it without hints to earn a star.";
       else line = "Great job! You earned a star! (" + now + " of " + MAX_STARS + ")";
       msg.appendChild(document.createTextNode(line));
-      if (mistakes === 0) msg.appendChild(el("div", "", "Perfect — no mistakes! 🎯"));
+      if (mistakes === 0 && hints === 0) msg.appendChild(el("div", "", "Perfect — no mistakes! 🎯"));
       stage.appendChild(msg);
       pool.classList.add("hidden");
       hintBtn.disabled = true;

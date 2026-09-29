@@ -2,3 +2,5 @@ _site/
 .sass-cache/
 .jekyll-metadata
 .bundle
+bible-memory/tests/node_modules/
+bible-memory/tests/package-lock.json

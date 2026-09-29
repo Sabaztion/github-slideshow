@@ -149,7 +149,9 @@ test("lesson alignment: every 'word to know' actually appears in its verse", asy
   const problems = [];
   for (const v of d.verses) {
     for (const [term, meaning] of d.lessons[v.id].words) {
-      if (!v.text.toLowerCase().includes(term.toLowerCase())) problems.push(v.ref + ": \"" + term + "\"");
+      // Whole words only, so "ye" can't pass by matching inside "yet".
+      const re = new RegExp("(^|[^\\p{L}])" + term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\p{L}])", "iu");
+      if (!re.test(v.text)) problems.push(v.ref + ": \"" + term + "\"");
       assert(meaning && meaning.length > 2, v.ref + " word '" + term + "' has no meaning");
     }
   }
@@ -221,6 +223,25 @@ test("home: Verse of the Week is a real verse and opens its lesson", async () =>
   eq((await page.textContent("#practiceRef")).trim(), v.ref);
   eq(await page.getAttribute("[data-mode=lesson]", "aria-selected"), "true");
   await context.close();
+});
+
+function atDate(y, m, d) {
+  const T = new Date(y, m, d, 12).getTime();
+  return `(() => { const T = ${T}; const R = Date; globalThis.Date = class extends R { constructor(...a) { super(...(a.length ? a : [T])); } static now() { return T; } }; })()`;
+}
+async function weekVerseOn(y, m, d) {
+  const { page, context } = await openApp({ init: atDate(y, m, d) });
+  const ref = (await page.textContent(".week-ref")).trim();
+  await context.close();
+  return ref;
+}
+
+test("home: Verse of the Week changes on Mondays and doesn't repeat at New Year", async () => {
+  // 28 Sep 2026 is a Monday.
+  eq(await weekVerseOn(2026, 8, 28), await weekVerseOn(2026, 9, 4), "Monday and Sunday of one week match");
+  assert(await weekVerseOn(2026, 9, 4) !== await weekVerseOn(2026, 9, 5), "changes on Monday");
+  // Thu 31 Dec 2026 and Fri 1 Jan 2027 are in the same week, so they must match.
+  eq(await weekVerseOn(2026, 11, 31), await weekVerseOn(2027, 0, 1), "no reset at New Year");
 });
 
 test("home: Verse of the Week changes weekly and cycles through all 52", async () => {
@@ -356,16 +377,20 @@ test("hide words: starts at a quarter, 'Hide more', slider limits, peeking", asy
   await page.fill("#hideRange", String(n));
   eq(await page.locator(".blank").count(), n, "slider max hides all");
   eq((await page.textContent(".meter label")).trim(), `Hidden words: ${n} of ${n}`);
-  // Blanks keep their word order: peeking all of them rebuilds the verse.
+  // Hidden words carry no visible text (so high-contrast modes can't reveal them)...
+  eq((await page.$$eval(".verse-text .blank:not(.peeked)", (b) => b.map((x) => x.textContent).join(""))), "", "hidden words have no text");
+  // ...and keep their word order: the blanks' words rebuild the verse.
+  eq((await page.$$eval(".verse-text .blank", (b) => b.map((x) => x.dataset.word))).join(" "), v.text, "blanks in verse order");
   const first = page.locator(".blank").first();
   await first.click();
   assert((await first.getAttribute("class")).includes("peeked"), "peek on click");
+  eq(await first.textContent(), words(v.text)[await page.$$eval(".verse-text > span", (els) => els.findIndex((e) => e.classList.contains("blank")))], "peek shows the word");
   await first.click();
+  eq(await first.textContent(), "", "unpeek hides the word again");
   assert(!(await first.getAttribute("class")).includes("peeked"), "unpeek on second click");
   await first.focus();
   await page.keyboard.press("Enter");
   assert((await first.getAttribute("class")).includes("peeked"), "peek with Enter key");
-  eq((await page.$$eval(".verse-text .blank", (b) => b.map((x) => x.textContent))).join(" "), v.text, "blanks in verse order");
   await context.close();
 });
 
@@ -450,6 +475,25 @@ test("build it: Hint highlights the next correct word; Start over resets", async
   await context.close();
 });
 
+test("build it: using a hint gives no star and no 'Perfect'", async () => {
+  const { page, context } = await openApp();
+  await openVerse(page, "John 11:35");
+  await page.click("[data-mode=build]");
+  await page.click("text=💡 Hint");
+  await page.click(".chip.glow");
+  await buildCorrectly(page, "wept.");
+  const msg = await page.textContent(".celebrate");
+  assert(msg.includes("without hints"), "hint message: " + msg);
+  assert(!msg.includes("Perfect"), "no perfect after hint");
+  eq((await page.textContent("#totalStars")).trim(), "⭐ 0", "no star after hint");
+  // Next round without hints earns the star.
+  await page.click("text=Play again");
+  await buildCorrectly(page, "Jesus wept.");
+  assert((await page.textContent(".celebrate")).includes("Perfect"), "perfect without hint");
+  eq((await page.textContent("#totalStars")).trim(), "⭐ 1");
+  await context.close();
+});
+
 test("build it: repeated words (e.g. 'love one another' twice) work in any chip order", async () => {
   const { page, context } = await openApp();
   const text = (await data(page)).verses.find((v) => v.ref === "John 13:34").text;
@@ -509,6 +553,36 @@ test("saving: corrupted saved data doesn't break the app", async () => {
   eq((await page.textContent("#totalStars")).trim(), "⭐ 0");
   eq(page.appErrors().length, 0, page.appErrors().join("; "));
   await context.close();
+});
+
+test("saving: wrongly shaped saved data is cleaned up, not trusted", async () => {
+  const bad = [
+    { custom: {} },
+    { custom: [null, 5, "x", { id: "a", ref: "A 1:1" }, { id: "b", ref: " ", text: "x" }] },
+    { stars: { "jn3-16": "2", "jn11-35": 99, "ps23-1": -4, "gen1-1": "abc" } },
+    { stars: [1, 2, 3] },
+    "just a string",
+    null
+  ];
+  for (const data of bad) {
+    const { page, context } = await openApp();
+    await page.evaluate((d) => localStorage.setItem("verseBuddies.v1", JSON.stringify(d)), data);
+    await page.reload();
+    eq(await page.locator(".verse-tile").count(), 52, "only real verses for " + JSON.stringify(data));
+    eq((await page.textContent("#progressLabel")).trim(), (data && data.stars && data.stars["jn11-35"]) ? "🏆 1 of 52 verses memorized" : "🏆 0 of 52 verses memorized", "progress for " + JSON.stringify(data));
+    if (data && data.stars && data.stars["jn3-16"]) {
+      // "2" becomes 2, 99 is capped at 3, negatives and junk are dropped: 2 + 3 = 5.
+      eq((await page.textContent("#totalStars")).trim(), "⭐ 5", "star values cleaned");
+    }
+    // Adding a verse still works after a bad save.
+    await page.click("#addBtn");
+    await page.fill("#newRef", "Test 1:1");
+    await page.fill("#newText", "Hello there.");
+    await page.click("text=Save verse");
+    eq(await page.locator(".verse-tile").count(), 53, "can add a verse after " + JSON.stringify(data));
+    eq(page.appErrors().length, 0, page.appErrors().join("; "));
+    await context.close();
+  }
 });
 
 test("saving: app still fully works when storage is blocked (private mode)", async () => {
@@ -597,6 +671,27 @@ test("add verse: custom verse gets a general lesson and every game works", async
   eq(await page.locator(".letters .fl").count(), words(text).length);
   await page.click("[data-mode=build]");
   await buildCorrectly(page, text);
+  await context.close();
+});
+
+test("add verse: non-English verses need the right order and show the right first letters", async () => {
+  const { page, context } = await openApp();
+  const text = "Бог есть любовь. Él es (amor), 하나님은 사랑이시라.";
+  await page.click("#addBtn");
+  await page.fill("#newRef", "Other 1:1");
+  await page.fill("#newText", text);
+  await page.click("text=Save verse");
+  await openVerse(page, "Other 1:1");
+  await page.click("[data-mode=letters]");
+  eq(JSON.stringify(await page.$$eval(".letters .fl", (e) => e.map((x) => x.textContent))),
+     JSON.stringify(["Б", "е", "л.", "É", "e", "(a),", "하", "사."]), "first letters");
+  await page.click("[data-mode=build]");
+  // A wrong word must be rejected (before the fix, every non-Latin word matched every slot).
+  await page.locator(".chip", { hasText: /^любовь\.$/ }).click();
+  eq(await page.locator(".built .placed").count(), 0, "wrong non-Latin word rejected");
+  await buildCorrectly(page, text);
+  eq((await page.$$eval(".built .placed", (p) => p.map((x) => x.textContent))).join(" "), text, "built in order");
+  eq(page.appErrors().length, 0, page.appErrors().join("; "));
   await context.close();
 });
 
