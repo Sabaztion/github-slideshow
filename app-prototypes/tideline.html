@@ -1,0 +1,267 @@
+<title>Tideline</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+  :root{
+    --bg:#EFF6F4; --surface:#FFFFFF; --surface-2:#DCEEEA; --ink:#0F2E30; --muted:#52706E;
+    --accent:#E08A3C; --accent-soft:#FCE7D2; --accent-ink:#8A4F14;
+    --teal:#1F6F63; --line:#CFE2DD; --danger:#C1503A; --danger-soft:#F6DDD5;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0B1A1B; --surface:#112625; --surface-2:#173330; --ink:#E3F1EE; --muted:#8FAAA6;
+      --accent:#F0A25F; --accent-soft:#3A2A18; --accent-ink:#F0C08E;
+      --teal:#5FB6A4; --line:#20403C; --danger:#E08571; --danger-soft:#3A2420;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0B1A1B; --surface:#112625; --surface-2:#173330; --ink:#E3F1EE; --muted:#8FAAA6;
+    --accent:#F0A25F; --accent-soft:#3A2A18; --accent-ink:#F0C08E;
+    --teal:#5FB6A4; --line:#20403C; --danger:#E08571; --danger-soft:#3A2420;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--bg); color:var(--ink); font-family:"IBM Plex Sans",system-ui,sans-serif; padding:24px 20px 48px;}
+  .wrap{max-width:760px; margin:0 auto; display:flex; flex-direction:column; gap:28px;}
+  .top{display:flex; justify-content:space-between; align-items:baseline;}
+  .brand{font-family:"Sora",sans-serif; font-weight:700; font-size:1.4rem;}
+  .sub{color:var(--muted); font-size:0.82rem;}
+
+  .hero{background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:26px;}
+  .hero .eyebrow{text-transform:uppercase; font-size:0.72rem; letter-spacing:0.08em; color:var(--teal); font-weight:700;}
+  .hero .num{font-family:"IBM Plex Mono",monospace; font-size:2.6rem; font-weight:500; margin:6px 0; font-variant-numeric:tabular-nums;}
+  .hero .cap{color:var(--muted); font-size:0.85rem; max-width:52ch; line-height:1.5;}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px;}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px;}
+  .card .l{font-size:0.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;}
+  .card .v{font-family:"IBM Plex Mono",monospace; font-size:1.3rem; margin-top:4px; font-variant-numeric:tabular-nums;}
+
+  h2.section{font-family:"Sora",sans-serif; font-weight:600; font-size:1.02rem; margin:0 0 12px;}
+
+  .waveform{background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:18px;}
+  .bars{display:flex; align-items:flex-end; gap:8px; height:110px;}
+  .bar{flex:1; background:var(--teal); border-radius:5px 5px 0 0; position:relative; min-width:10px;}
+  .bar .amt{position:absolute; top:-18px; left:50%; transform:translateX(-50%); font-size:0.62rem; color:var(--muted); font-family:"IBM Plex Mono",monospace; white-space:nowrap;}
+  .barlabels{display:flex; gap:8px; margin-top:6px;}
+  .barlabels span{flex:1; text-align:center; font-size:0.62rem; color:var(--muted);}
+  .avgline{border-top:1px dashed var(--muted); position:relative; margin-top:2px;}
+
+  .tank-wrap{background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:18px; display:flex; gap:18px; align-items:center;}
+  .tank{width:64px; height:120px; border:2px solid var(--line); border-radius:10px; position:relative; overflow:hidden; background:var(--surface-2); flex-shrink:0;}
+  .tank .fill{position:absolute; bottom:0; left:0; right:0; background:var(--teal); transition:height .4s;}
+  .tank-info .v{font-family:"IBM Plex Mono",monospace; font-size:1.4rem; font-variant-numeric:tabular-nums;}
+  .tank-info .l{font-size:0.78rem; color:var(--muted); margin-top:2px; max-width:32ch; line-height:1.4;}
+
+  .list{display:flex; flex-direction:column; gap:8px;}
+  .row{display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px;}
+  .row .name{flex:1; font-weight:500; font-size:0.9rem;}
+  .row .date{font-size:0.76rem; color:var(--muted);}
+  .row .amt{font-family:"IBM Plex Mono",monospace; font-size:0.9rem; font-variant-numeric:tabular-nums;}
+  .amt.neg{color:var(--danger);} .amt.pos{color:var(--teal);}
+  .row .cat{font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); background:var(--surface-2); padding:3px 7px; border-radius:6px;}
+  .minibtn{font:inherit; font-size:0.72rem; font-weight:600; padding:6px 10px; border-radius:7px; border:1px solid var(--line); background:var(--bg); color:var(--muted); cursor:pointer;}
+  .minibtn:hover{border-color:var(--teal); color:var(--teal);}
+  .target-row{display:flex; align-items:center; gap:10px; margin-top:12px; font-size:0.78rem; color:var(--muted);}
+  .target-row input[type=range]{flex:1; accent-color:var(--teal);}
+
+  form.add{background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:16px; display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;}
+  .field{display:flex; flex-direction:column; gap:4px; font-size:0.75rem; color:var(--muted);}
+  .field input, .field select{font:inherit; font-size:0.85rem; padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink);}
+  .field.title{flex:1; min-width:140px;}
+  button[type=submit]{font:inherit; font-size:0.85rem; font-weight:600; padding:9px 16px; border-radius:8px; border:none; background:var(--accent); color:#3A2005; cursor:pointer;}
+  button:focus-visible, input:focus-visible, select:focus-visible{outline:2px solid var(--teal); outline-offset:2px;}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div class="brand">Tideline</div>
+    <div class="sub">Income smoothing for variable pay</div>
+  </div>
+
+  <div class="hero">
+    <div class="eyebrow">Safe to spend, per day, until your next expected payment</div>
+    <div class="num" id="safeAmt">$0</div>
+    <div class="cap" id="safeCap">Calculated from your buffer, upcoming bills, and when your next payment is likely to land.</div>
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="l">Buffer</div><div class="v" id="bufferAmt">$0</div></div>
+    <div class="card"><div class="l">8-week average income</div><div class="v" id="avgAmt">$0</div></div>
+    <div class="card"><div class="l">Upcoming bills</div><div class="v" id="billsAmt">$0</div></div>
+    <div class="card"><div class="l">Next expected payment</div><div class="v" id="nextDays">—</div></div>
+  </div>
+
+  <section>
+    <h2 class="section">Last 8 weeks of income</h2>
+    <div class="waveform">
+      <div class="bars" id="bars"></div>
+      <div class="barlabels" id="barLabels"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section">Reserve tank</h2>
+    <div class="tank-wrap">
+      <div class="tank"><div class="fill" id="tankFill"></div></div>
+      <div class="tank-info">
+        <div class="v" id="tankTarget">—</div>
+        <div class="l">Target buffer: <span id="targetWeeksLabel">4</span> weeks of average income. This smooths the gaps between gigs.</div>
+        <div class="target-row"><span>2wk</span><input type="range" id="targetSlider" min="2" max="8" step="1" value="4"><span>8wk</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section">Upcoming bills &amp; payments</h2>
+    <div class="list" id="events"></div>
+  </section>
+
+  <section>
+    <h2 class="section">Log something</h2>
+    <form class="add" id="addForm">
+      <div class="field title"><label>Description</label><input id="fName" placeholder="e.g. Freelance invoice" required></div>
+      <div class="field"><label>Type</label>
+        <select id="fType"><option value="income">Income</option><option value="expense">Bill</option></select>
+      </div>
+      <div class="field"><label>Amount</label><input id="fAmt" type="number" min="1" step="1" placeholder="450" required></div>
+      <div class="field"><label>Date</label><input id="fDate" type="date" required></div>
+      <button type="submit">Add</button>
+    </form>
+  </section>
+</div>
+
+<script>
+(function(){
+  var STORAGE_KEY = "tideline.state.v1";
+  var DAY = 86400000;
+  var today = new Date(); today.setHours(0,0,0,0);
+  function iso(d){ return d.toISOString().slice(0,10); }
+  function addDays(n){ return iso(new Date(today.getTime()+n*DAY)); }
+  function money(n){ return "$"+Math.round(n).toLocaleString(); }
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  var seed = {
+    buffer: 1120,
+    targetWeeks: 4,
+    incomeHistory: [
+      {week:"8w ago", amt:640}, {week:"7w ago", amt:210}, {week:"6w ago", amt:880},
+      {week:"5w ago", amt:150}, {week:"4w ago", amt:720}, {week:"3w ago", amt:940},
+      {week:"2w ago", amt:0}, {week:"last wk", amt:560}
+    ],
+    events: [
+      {id:1, name:"Rent", type:"expense", category:"Housing", amt:1450, date:addDays(6)},
+      {id:2, name:"Phone bill", type:"expense", category:"Utilities", amt:65, date:addDays(3)},
+      {id:3, name:"Expected: design contract payout", type:"income", category:"Client work", amt:900, date:addDays(9)},
+      {id:4, name:"Car insurance", type:"expense", category:"Transport", amt:180, date:addDays(14)},
+      {id:5, name:"Groceries (est.)", type:"expense", category:"Food", amt:320, date:addDays(6)}
+    ]
+  };
+
+  function load(){
+    try{ var raw = localStorage.getItem(STORAGE_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+    return seed;
+  }
+  function save(s){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }catch(e){} }
+
+  var state = load();
+  if(!state.targetWeeks) state.targetWeeks = 4;
+
+  function render(){
+    var avg = state.incomeHistory.reduce(function(s,w){return s+w.amt;},0) / state.incomeHistory.length;
+    var billsAhead = state.events.filter(function(e){return e.type==='expense';}).reduce(function(s,e){return s+e.amt;},0);
+    var incomeAhead = state.events.filter(function(e){return e.type==='income';});
+    var nextIncome = incomeAhead.sort(function(a,b){return new Date(a.date)-new Date(b.date);})[0];
+    var daysToNext = nextIncome ? Math.max(1, Math.round((new Date(nextIncome.date)-today)/DAY)) : 14;
+
+    var available = state.buffer - billsAhead;
+    var safePerDay = available>0 ? available/daysToNext : 0;
+
+    document.getElementById('safeAmt').textContent = money(safePerDay) + "/day";
+    document.getElementById('safeCap').textContent = available>0
+      ? "Buffer minus upcoming bills, spread across the "+daysToNext+" days until your next expected payment."
+      : "Upcoming bills exceed your buffer — income before then isn't optional, it's already spoken for.";
+    document.getElementById('bufferAmt').textContent = money(state.buffer);
+    document.getElementById('avgAmt').textContent = money(avg);
+    document.getElementById('billsAmt').textContent = money(billsAhead);
+    document.getElementById('nextDays').textContent = nextIncome ? "in "+daysToNext+"d" : "none logged";
+
+    var max = Math.max.apply(null, state.incomeHistory.map(function(w){return w.amt;}).concat([avg]));
+    var bars = document.getElementById('bars');
+    var labels = document.getElementById('barLabels');
+    bars.innerHTML=''; labels.innerHTML='';
+    state.incomeHistory.forEach(function(w){
+      var h = max>0 ? Math.max(4,(w.amt/max)*100) : 4;
+      var el = document.createElement('div');
+      el.className='bar';
+      el.style.height = h+'%';
+      el.innerHTML = '<span class="amt">'+money(w.amt)+'</span>';
+      bars.appendChild(el);
+      var lab = document.createElement('span');
+      lab.textContent = w.week;
+      labels.appendChild(lab);
+    });
+
+    var target = avg*state.targetWeeks;
+    var pct = target>0 ? Math.min(100,(state.buffer/target)*100) : 0;
+    document.getElementById('tankFill').style.height = pct+'%';
+    document.getElementById('tankTarget').textContent = money(state.buffer)+" of "+money(target)+" target";
+    document.getElementById('targetWeeksLabel').textContent = state.targetWeeks;
+    document.getElementById('targetSlider').value = state.targetWeeks;
+
+    var events = state.events.slice().sort(function(a,b){return new Date(a.date)-new Date(b.date);});
+    var list = document.getElementById('events');
+    list.innerHTML='';
+    events.forEach(function(e){
+      var row=document.createElement('div');
+      row.className='row';
+      var d = new Date(e.date+"T00:00:00").toLocaleDateString(undefined,{month:'short',day:'numeric'});
+      row.innerHTML = '<span class="name">'+escapeHtml(e.name)+(e.category?'<span class="cat" style="margin-left:8px;">'+escapeHtml(e.category)+'</span>':'')+'</span>'+
+        '<span class="date">'+d+'</span>'+
+        '<span class="amt '+(e.type==='income'?'pos':'neg')+'">'+(e.type==='income'?'+':'−')+money(e.amt)+'</span>'+
+        '<button class="minibtn" data-id="'+e.id+'">'+(e.type==='income'?'Mark received':'Mark paid')+'</button>';
+      list.appendChild(row);
+    });
+    list.querySelectorAll('button[data-id]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = parseInt(btn.getAttribute('data-id'),10);
+        var ev = state.events.find(function(e){return e.id===id;});
+        if(ev){
+          state.buffer += (ev.type==='income' ? ev.amt : -ev.amt);
+          state.events = state.events.filter(function(e){return e.id!==id;});
+        }
+        render();
+      });
+    });
+
+    save(state);
+  }
+
+  document.getElementById('targetSlider').addEventListener('input', function(){
+    state.targetWeeks = parseInt(this.value,10);
+    render();
+  });
+
+  document.getElementById('addForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var type = document.getElementById('fType').value;
+    var amt = parseFloat(document.getElementById('fAmt').value)||0;
+    var date = document.getElementById('fDate').value || iso(today);
+    var name = document.getElementById('fName').value.trim() || (type==='income'?'Income':'Bill');
+    if(new Date(date+"T00:00:00") <= today){
+      state.buffer += (type==='income' ? amt : -amt);
+    } else {
+      state.events.push({id:Date.now(), name:name, type:type, amt:amt, date:date});
+    }
+    e.target.reset();
+    render();
+  });
+
+  render();
+})();
+</script>

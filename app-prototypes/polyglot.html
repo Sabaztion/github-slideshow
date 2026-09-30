@@ -1,0 +1,287 @@
+<title>Relay</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Noto+Sans:wght@400;500;600&family=Noto+Sans+Arabic:wght@400;600&family=Noto+Sans+JP:wght@400;600&family=Noto+Sans+SC:wght@400;600&display=swap">
+<style>
+  :root{
+    --bg:#F7F5FA; --surface:#FFFFFF; --surface-2:#EEE9F4; --ink:#241934; --muted:#6B5E7D;
+    --accent:#6A4C93; --accent-soft:#E9E1F5; --line:#E2DCEC;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#17121F; --surface:#1E1829; --surface-2:#251E33; --ink:#EDE7F5; --muted:#A697BC;
+      --accent:#B49AE0; --accent-soft:#2E2540; --line:#322944;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#17121F; --surface:#1E1829; --surface-2:#251E33; --ink:#EDE7F5; --muted:#A697BC;
+    --accent:#B49AE0; --accent-soft:#2E2540; --line:#322944;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--bg); color:var(--ink); font-family:"Noto Sans",system-ui,sans-serif; padding:24px 20px 48px;}
+  .wrap{max-width:840px; margin:0 auto; display:flex; flex-direction:column; gap:24px;}
+  .brand{font-family:"Spectral",serif; font-weight:600; font-size:1.5rem;}
+  .tagline{color:var(--muted); font-size:0.85rem; margin-top:2px;}
+
+  .controls{background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:12px;}
+  .crow{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .crow label{font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); min-width:88px;}
+  select{font:inherit; font-size:0.85rem; padding:7px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink);}
+  .chip{font-size:0.8rem; padding:6px 13px; border-radius:999px; border:1px solid var(--line); background:var(--bg); color:var(--ink); cursor:pointer; font-family:inherit;}
+  .chip.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+  .chip[disabled]{opacity:0.4; cursor:not-allowed;}
+
+  .phrases{display:flex; flex-wrap:wrap; gap:8px;}
+  .phrase{font-size:0.8rem; padding:7px 12px; border-radius:10px; border:1px solid var(--line); background:var(--surface); color:var(--ink); cursor:pointer; font-family:inherit; text-align:left;}
+  .phrase:hover{border-color:var(--accent);}
+  .phrase.active{background:var(--accent-soft); border-color:var(--accent);}
+
+  .relay-head{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px 18px;}
+  .relay-head .l{font-size:0.68rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted);}
+  .relay-head .t{font-size:1.05rem; margin-top:4px;}
+
+  .relay{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px;}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px; border-top:3px solid var(--accent); cursor:pointer;}
+  .card:hover{border-color:var(--accent);}
+  .card .lang{font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); display:flex; justify-content:space-between;}
+  .card .text{font-size:1.15rem; margin-top:8px; line-height:1.5;}
+  .card .empty{color:var(--muted); font-size:0.85rem; font-style:italic;}
+  .card .swap{font-size:0.68rem; color:var(--accent); margin-top:8px;}
+  .customrow{display:flex; gap:8px;}
+  .customrow input{flex:1; font:inherit; font-size:0.85rem; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--surface); color:var(--ink);}
+  .customrow button{font:inherit; font-size:0.82rem; font-weight:600; padding:9px 14px; border-radius:8px; border:none; background:var(--accent); color:#fff; cursor:pointer;}
+  .star{background:none; border:none; cursor:pointer; font-size:1rem; color:var(--muted); line-height:1;}
+  .star.saved{color:var(--accent);}
+  .savedrow{display:flex; flex-wrap:wrap; gap:8px;}
+  .savedchip{font-size:0.78rem; padding:6px 10px; border-radius:8px; background:var(--accent-soft); color:var(--accent); border:none; cursor:pointer; font-family:inherit;}
+  .lang-ar{font-family:"Noto Sans Arabic","Noto Sans",sans-serif; direction:rtl; text-align:right;}
+  .lang-ja{font-family:"Noto Sans JP","Noto Sans",sans-serif;}
+  .lang-zh{font-family:"Noto Sans SC","Noto Sans",sans-serif;}
+
+  .note{font-size:0.76rem; color:var(--muted); line-height:1.5;}
+  button:focus-visible, select:focus-visible, .chip:focus-visible, .phrase:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+</style>
+
+<div class="wrap">
+  <div>
+    <div class="brand">Relay</div>
+    <div class="tagline">Translate one phrase into several languages at once, side by side.</div>
+  </div>
+
+  <div class="controls">
+    <div class="crow">
+      <label>You speak</label>
+      <select id="baseLang"></select>
+    </div>
+    <div class="crow">
+      <label>Translate into</label>
+      <div id="targetChips" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="crow" style="margin-bottom:10px;"><label style="min-width:auto;">Try a phrase</label></div>
+    <div class="phrases" id="phraseList"></div>
+  </div>
+
+  <div>
+    <div class="crow" style="margin-bottom:10px;"><label style="min-width:auto;">Or type one</label></div>
+    <div class="customrow">
+      <input id="customInput" placeholder="Type a phrase from the list above, in any of its languages">
+      <button type="button" id="customGo">Look up</button>
+    </div>
+  </div>
+
+  <div class="relay-head">
+    <div class="head-top" style="display:flex; justify-content:space-between; align-items:center;">
+      <div class="l">Source phrase</div>
+      <button class="star" id="saveStar" title="Save phrase">★ Save</button>
+    </div>
+    <div class="t" id="sourceText">Pick a phrase above to translate it into every language you've selected.</div>
+  </div>
+
+  <div class="relay" id="relay"></div>
+
+  <div id="savedSection" style="display:none;">
+    <div class="crow" style="margin-bottom:10px;"><label style="min-width:auto;">Saved phrases</label></div>
+    <div class="savedrow" id="savedRow"></div>
+  </div>
+
+  <p class="note">Prototype note: translations shown are a fixed phrasebook for demonstration, not a live translation service — that's the one piece a production build would swap in behind this same layout.</p>
+</div>
+
+<script>
+(function(){
+  var LANGS = {
+    en:{name:"English", native:"English"},
+    es:{name:"Spanish", native:"Español"},
+    fr:{name:"French", native:"Français"},
+    de:{name:"German", native:"Deutsch"},
+    ja:{name:"Japanese", native:"日本語"},
+    zh:{name:"Mandarin", native:"中文"},
+    ar:{name:"Arabic", native:"العربية"}
+  };
+
+  var PHRASES = [
+    {en:"Where is the bathroom?", es:"¿Dónde está el baño?", fr:"Où sont les toilettes ?", de:"Wo ist die Toilette?", ja:"お手洗いはどこですか？", zh:"洗手间在哪里？", ar:"أين الحمام؟"},
+    {en:"Thank you very much", es:"Muchas gracias", fr:"Merci beaucoup", de:"Vielen Dank", ja:"どうもありがとうございます", zh:"非常感谢", ar:"شكرًا جزيلًا"},
+    {en:"How much does this cost?", es:"¿Cuánto cuesta esto?", fr:"Combien ça coûte ?", de:"Wie viel kostet das?", ja:"これはいくらですか？", zh:"这个多少钱？", ar:"كم يكلف هذا؟"},
+    {en:"I don't understand", es:"No entiendo", fr:"Je ne comprends pas", de:"Ich verstehe nicht", ja:"わかりません", zh:"我不明白", ar:"أنا لا أفهم"},
+    {en:"Can you help me?", es:"¿Puedes ayudarme?", fr:"Pouvez-vous m'aider ?", de:"Können Sie mir helfen?", ja:"手伝ってもらえますか？", zh:"你能帮我吗？", ar:"هل يمكنك مساعدتي؟"},
+    {en:"Nice to meet you", es:"Mucho gusto", fr:"Enchénté(e)", de:"Freut mich", ja:"はじめまして", zh:"很高兴认识你", ar:"سررت بلقائك"}
+  ];
+
+  var STORAGE_KEY = "relay.saved.v1";
+  function loadSaved(){
+    try{ var raw = localStorage.getItem(STORAGE_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+    return [];
+  }
+  function saveSaved(list){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }catch(e){} }
+
+  var state = { base:"en", targets:["es","fr","zh"], phraseIdx:null, saved: loadSaved() };
+
+  var baseSel = document.getElementById('baseLang');
+  Object.keys(LANGS).forEach(function(code){
+    var o = document.createElement('option');
+    o.value = code; o.textContent = LANGS[code].name + " — " + LANGS[code].native;
+    baseSel.appendChild(o);
+  });
+  baseSel.value = state.base;
+  baseSel.addEventListener('change', function(){ state.base = baseSel.value; renderAll(); });
+
+  var chipBox = document.getElementById('targetChips');
+  function renderChips(){
+    chipBox.innerHTML = '';
+    Object.keys(LANGS).forEach(function(code){
+      if(code === state.base) return;
+      var chip = document.createElement('button');
+      chip.type='button';
+      chip.className = 'chip' + (state.targets.indexOf(code)>=0 ? ' active' : '');
+      chip.textContent = LANGS[code].native;
+      chip.addEventListener('click', function(){
+        var i = state.targets.indexOf(code);
+        if(i>=0){ state.targets.splice(i,1); }
+        else if(state.targets.length<4){ state.targets.push(code); }
+        renderChips(); renderAll();
+      });
+      chipBox.appendChild(chip);
+    });
+  }
+
+  var phraseBox = document.getElementById('phraseList');
+  function renderPhrases(){
+    phraseBox.innerHTML = '';
+    PHRASES.forEach(function(p, idx){
+      var btn = document.createElement('button');
+      btn.type='button';
+      btn.className = 'phrase' + (state.phraseIdx===idx ? ' active' : '');
+      btn.textContent = p[state.base] || p.en;
+      btn.addEventListener('click', function(){ state.phraseIdx = idx; renderAll(); });
+      phraseBox.appendChild(btn);
+    });
+  }
+
+  function langClass(code){
+    if(code==='ar') return 'lang-ar';
+    if(code==='ja') return 'lang-ja';
+    if(code==='zh') return 'lang-zh';
+    return '';
+  }
+
+  function findPhraseByText(text){
+    var needle = text.trim().toLowerCase();
+    if(!needle) return null;
+    for(var i=0;i<PHRASES.length;i++){
+      var p = PHRASES[i];
+      for(var code in p){
+        if(p[code] && p[code].toLowerCase()===needle) return i;
+      }
+    }
+    return null;
+  }
+
+  function renderSaved(){
+    var section = document.getElementById('savedSection');
+    var row = document.getElementById('savedRow');
+    row.innerHTML = '';
+    if(state.saved.length===0){ section.style.display='none'; return; }
+    section.style.display='block';
+    state.saved.forEach(function(idx){
+      var p = PHRASES[idx];
+      if(!p) return;
+      var chip = document.createElement('button');
+      chip.className = 'savedchip';
+      chip.textContent = p[state.base] || p.en;
+      chip.addEventListener('click', function(){ state.phraseIdx = idx; renderAll(); });
+      row.appendChild(chip);
+    });
+  }
+
+  function renderAll(){
+    renderPhrases();
+    var phrase = state.phraseIdx!==null ? PHRASES[state.phraseIdx] : null;
+    document.getElementById('sourceText').className = langClass(state.base);
+    document.getElementById('sourceText').textContent = phrase ? (phrase[state.base]||phrase.en) : "Pick a phrase above to translate it into every language you've selected.";
+
+    var star = document.getElementById('saveStar');
+    var isSaved = phrase!==null && state.saved.indexOf(state.phraseIdx)>=0;
+    star.classList.toggle('saved', isSaved);
+    star.textContent = isSaved ? "★ Saved" : "☆ Save";
+    star.disabled = phrase===null;
+
+    var relay = document.getElementById('relay');
+    relay.innerHTML = '';
+    state.targets.forEach(function(code){
+      var card = document.createElement('div');
+      card.className = 'card';
+      var text = phrase ? (phrase[code] || null) : null;
+      card.innerHTML = '<div class="lang"><span>'+LANGS[code].name+'</span><span>'+LANGS[code].native+'</span></div>'+
+        (text ? '<div class="text '+langClass(code)+'">'+text+'</div>' : '<div class="empty">No phrase selected yet.</div>')+
+        '<div class="swap">Tap to make '+LANGS[code].name+' your base language →</div>';
+      card.addEventListener('click', function(){
+        var oldBase = state.base;
+        state.targets = state.targets.filter(function(c){ return c!==code; });
+        if(state.targets.indexOf(oldBase)<0) state.targets.unshift(oldBase);
+        state.base = code;
+        baseSel.value = code;
+        renderChips();
+        renderAll();
+      });
+      relay.appendChild(card);
+    });
+
+    renderSaved();
+  }
+
+  document.getElementById('saveStar').addEventListener('click', function(){
+    if(state.phraseIdx===null) return;
+    var i = state.saved.indexOf(state.phraseIdx);
+    if(i>=0){ state.saved.splice(i,1); } else { state.saved.push(state.phraseIdx); }
+    saveSaved(state.saved);
+    renderAll();
+  });
+
+  function runCustomLookup(){
+    var val = document.getElementById('customInput').value;
+    var idx = findPhraseByText(val);
+    if(idx!==null){
+      state.phraseIdx = idx;
+      renderAll();
+    } else {
+      state.phraseIdx = null;
+      renderAll();
+      document.getElementById('sourceText').textContent = val.trim()
+        ? "No preset translation for “"+val.trim()+"” in this prototype — a live build would call a translation API here."
+        : "Pick a phrase above to translate it into every language you've selected.";
+    }
+  }
+  document.getElementById('customGo').addEventListener('click', runCustomLookup);
+  document.getElementById('customInput').addEventListener('keydown', function(e){
+    if(e.key==='Enter'){ e.preventDefault(); runCustomLookup(); }
+  });
+
+  renderChips();
+  renderAll();
+})();
+</script>
