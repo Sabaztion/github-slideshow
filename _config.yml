@@ -105,6 +105,7 @@ exclude: [
   "Gemfile",
   "Gemfile.lock",
   "vendor",
+  "bible-memory/tests",
   "reveal.js/test",
   "reveal.js/index.html",
   "reveal.js/README.md",

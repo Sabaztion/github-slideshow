@@ -1,0 +1,11 @@
+{
+  "name": "verse-buddies-tests",
+  "private": true,
+  "description": "Automated tests for Verse Buddies. Install here, not at the repo root (the root tracks node_modules/reveal.js, which npm would delete).",
+  "scripts": {
+    "test": "node run-tests.js"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}
