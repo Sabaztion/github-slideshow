@@ -1365,7 +1365,7 @@ function renderWO(){if(!wo)return;const l=dayLog(trackKey,false),S=SESS[wo.sk],n
     $("woInner").innerHTML=`<div class="setup-top"><div class="brand"><h1>Dragon<span>warrior</span></h1></div><button class="btn ghost" type="button" data-wo="close">Close</button></div>
      <div class="stack" style="gap:8px"><span class="label">Session complete</span><h2 id="woTitle" style="font-size:2.6rem">${esc(S.n)} done</h2><p class="muted" style="margin:0">Log it, eat your recovery meal, and come back stronger next time.</p></div>
      <div class="targets"><div class="tile kcal"><span class="label">Sets</span><span class="big">${sets}</span></div><div class="tile"><span class="label">Volume</span><span class="big">${fmt(state.profile.units==="imperial"?kgToLb(vol):vol)} <small>${wUnit()}</small></span></div><div class="tile"><span class="label">Records</span><span class="big">${prs}</span></div><div class="tile"><span class="label">Time</span><span class="big">${mins} <small>min</small></span></div></div>
-     <div class="setup-nav"><span></span><button class="btn primary" type="button" data-wo="close">Finish</button></div>`;return}
+     <div class="setup-nav"><span></span><button class="btn primary" type="button" data-wo="close">Finish</button></div>`;const t=$("woTitle");if(t){t.setAttribute("tabindex","-1");t.focus({preventScroll:true})}return}
   const slot=wo.slots[wo.i],k=MAP[slot][wo.ei],e=EX[k],rx=prescription(slot,k),ns=parseInt(rx,10)||3,sets=(l.lifts||{})[k]||[],timed=!!TIMED[k];
   const last=lastLift(k,trackKey),sg=suggest(slot,k,trackKey);let rows="";
   for(let j=0;j<ns;j++){const x=sets[j]||{};rows+=`<div class="lset"><span class="sn">Set ${j+1}</span><input type="number" inputmode="decimal" step="0.5" min="0" placeholder="${BW.has(k)?"BW":wUnit()}" value="${x.w?inUnit(x.w):""}" data-lift="${k}:${j}:w" aria-label="Set ${j+1} weight in ${wUnit()}"><span class="muted">×</span><input type="number" inputmode="numeric" min="0" placeholder="${timed?(k==="plank"?"sec":k==="deadbug"?"reps":"metres"):"reps"}" value="${x.r||""}" data-lift="${k}:${j}:r" aria-label="Set ${j+1} ${timed?"amount":"reps"}"><button class="tick" type="button" data-wotick="${k}:${j}" aria-pressed="${!!x.d}" aria-label="Mark set ${j+1} done">&#10003;</button></div>`}
@@ -1381,7 +1381,8 @@ function renderWO(){if(!wo)return;const l=dayLog(trackKey,false),S=SESS[wo.sk],n
      <details><summary class="note" style="cursor:pointer">Form cues</summary><ol style="margin:.5em 0 0;padding-left:1.2em">${e.c.map(c=>`<li>${esc(c)}</li>`).join("")}</ol><div class="avoid" style="margin-top:6px"><strong>Avoid:</strong> ${esc(e.a)}</div></details>
    </div></div>
    <div class="setup-nav"><button class="btn" type="button" data-wo="prev" ${wo.i===0?"hidden":""}>Previous</button><span></span><button class="btn primary" type="button" data-wo="next">${wo.i===n-1?"Finish workout":"Next exercise"}</button></div>`;
-  const f=$("woInner").querySelector(".fig");if(f&&!REDUCED){liveFigs.add(f);if(!rafId)rafId=requestAnimationFrame(animTick)}}
+  const f=$("woInner").querySelector(".fig");if(f&&!REDUCED){liveFigs.add(f);if(!rafId)rafId=requestAnimationFrame(animTick)}
+  if(!document.activeElement||!document.activeElement.closest||!document.activeElement.closest("#wo")){const t=$("woTitle");if(t){t.setAttribute("tabindex","-1");t.focus({preventScroll:true})}}}
 function startRest(sec){if(!sec)return;wo.rest={end:Date.now()+sec*1000,beeped:false};clearInterval(woTimer);woTimer=setInterval(()=>{if(!wo||!wo.rest){clearInterval(woTimer);return}
   const left=(wo.rest.end-Date.now())/1000,t=$("woTime");if(t)t.textContent=left>0?fmtT(left):"Go!";
   if(left<=0&&!wo.rest.beeped){wo.rest.beeped=true;beep();const bx=$("woTimerBox");if(bx)bx.classList.add("done");clearInterval(woTimer)}},250)}
@@ -1398,7 +1399,12 @@ $("wo").addEventListener("click",e=>{if(!wo)return;const tk=e.target.closest("[d
   if(a==="skip"){wo.rest=null;clearInterval(woTimer);renderWO();return}
   if(a==="prev"){wo.i=Math.max(0,wo.i-1);renderWO();return}
   if(a==="next"){if(wo.i<wo.slots.length-1){wo.i++;renderWO();$("wo").scrollTo(0,0)}else{wo.done=true;wo.rest=null;clearInterval(woTimer);renderWO()}return}});
-$("wo").addEventListener("keydown",e=>{if(e.key==="Escape"&&wo){e.preventDefault();closeWO()}});
+document.addEventListener("keydown",e=>{if(!wo||$("wo").hidden)return;
+  if(e.key==="Escape"){e.preventDefault();closeWO();return}
+  if(e.key==="Tab"){const f=[...$("wo").querySelectorAll('button:not([hidden]):not([disabled]),input,select,textarea,summary,[tabindex="0"]')].filter(x=>x.offsetParent!==null);if(!f.length)return;
+    const first=f[0],last=f[f.length-1],a=document.activeElement,inside=a&&a.closest&&a.closest("#wo");
+    if(!inside){e.preventDefault();first.focus();return}
+    if(e.shiftKey&&(a===first||a===$("woTitle"))){e.preventDefault();last.focus()}else if(!e.shiftKey&&a===last){e.preventDefault();first.focus()}}});
 
 /* ---------- today card ---------- */
 function renderToday(){const now=new Date(),k=dkey(now),l=dayLog(k,false),T=targets(),sk=sessionForDay(wd(now));
@@ -1576,6 +1582,5 @@ initCloud();
 loadPhotos();
 })();
 </script>
-
 </body>
 </html>
