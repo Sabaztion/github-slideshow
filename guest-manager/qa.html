@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pre-interview Questions</title>
+<meta name="description" content="A few short questions before we record.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23B83A14'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<main class="intake" id="main">
+  <div class="intake-top">
+    <a class="back-link" href="./">← Back to pipeline</a>
+    <span class="eyebrow">Pre-interview</span>
+  </div>
+
+  <header>
+    <h1 id="page-title" tabindex="-1">A few questions before we record <span data-show-name>our show</span></h1>
+    <p>Your answers help us introduce you well and ask about the things you care about. A sentence or two each is plenty, and you can skip any question.</p>
+    <p class="delivery-note" id="delivery-note"></p>
+  </header>
+
+  <section class="intake-done" id="done" aria-labelledby="done-title" hidden>
+    <h2 id="done-title" tabindex="-1">Thanks, your answers reached the show.</h2>
+    <div class="error-summary" id="send-error" role="alert" hidden></div>
+    <div class="fallback-block" id="fallback-block">
+      <p id="done-local-note"></p>
+      <label class="field">Your answers as text
+        <textarea class="input" id="qa-text" rows="12" readonly></textarea>
+      </label>
+      <div class="btn-row">
+        <button type="button" class="btn btn-primary" id="retry-send" hidden>Try sending again</button>
+        <button type="button" class="btn btn-outline" id="copy-text">Copy as text</button>
+        <a class="btn btn-outline" id="email-text" href="#">Open in email app</a>
+      </div>
+      <p class="hint" id="mailto-note" hidden>Your answers are long, so the email version is shortened. Use “Copy as text” and paste the full answers into your email.</p>
+    </div>
+    <div class="btn-row">
+      <button type="button" class="btn btn-quiet" id="edit-again">Edit my answers</button>
+    </div>
+  </section>
+
+  <form class="intake-form" id="qa-form" novalidate>
+    <div class="error-summary" id="error-summary" tabindex="-1" hidden></div>
+    <div class="grid-2">
+      <label class="field">Full name
+        <input type="text" name="name" id="in-name" autocomplete="name" required aria-describedby="err-name">
+        <span class="field-error" id="err-name" hidden></span>
+      </label>
+      <label class="field">Email
+        <input type="email" name="email" id="in-email" autocomplete="email" required aria-describedby="err-email">
+        <span class="field-error" id="err-email" hidden></span>
+      </label>
+    </div>
+
+    <ol class="qa-questions" id="questions"></ol>
+
+    <div class="field">
+      <label for="in-topics">Topics I’d love to talk about <span class="hint">(optional)</span></label>
+      <textarea id="in-topics" name="topics" rows="3" aria-describedby="count-topics"></textarea>
+      <span class="char-count" id="count-topics"></span>
+    </div>
+
+    <div class="hp-field" id="hp-field" aria-hidden="true">
+      <label>Leave this empty <input type="text" tabindex="-1" autocomplete="off"></label>
+    </div>
+
+    <p class="send-status" id="send-status" role="status" aria-live="polite"></p>
+    <div class="form-foot">
+      <span class="mono" id="draft-status" aria-live="off"></span>
+      <button type="submit" class="btn btn-primary btn-lg">Send my answers</button>
+    </div>
+  </form>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="js/qa.js"></script>
+</body>
+</html>

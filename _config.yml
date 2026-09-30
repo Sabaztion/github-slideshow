@@ -112,5 +112,8 @@ exclude: [
   "reveal.js/Gruntfile.js",
   "reveal.js/CONTRIBUTING.md",
   "reveal.js/LICENSE",
-  "reveal.js/package.json"
+  "reveal.js/package.json",
+  "guest-manager/README.md",
+  "guest-manager/tests",
+  "guest-manager/backend"
 ]
