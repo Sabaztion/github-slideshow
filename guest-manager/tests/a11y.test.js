@@ -35,3 +35,14 @@ describe('a11y/ux helpers', () => {
     assert.equal(L.convertZone('2026-10-06T14:00', 'Asia/Kathmandu', 'UTC'), '2026-10-06T08:15');
   });
 });
+
+describe('guest-facing error wording', async () => {
+  const { guestErrorMessage } = await import('../js/guest-page.js');
+  test('setup problems are not explained to guests; server reasons and network hints are', () => {
+    const err = (kind, message) => Object.assign(new Error(message), { kind });
+    assert.doesNotMatch(guestErrorMessage(err('setup', 'Is the web app deployed with access set to “Anyone”?')), /deployed|Anyone/);
+    assert.doesNotMatch(guestErrorMessage(err('http', 'HTTP 500')), /HTTP/);
+    assert.match(guestErrorMessage(err('network', 'x')), /connection/);
+    assert.equal(guestErrorMessage(err('rejected', 'Email is not valid.')), 'Email is not valid.');
+  });
+});

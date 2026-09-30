@@ -276,9 +276,13 @@ export function promoteAnswer(guest, questionId, target, { idFn = () => shortId(
   const a = guest.qa.answers[questionId];
   if (!a || !a.text) return guest;
   const plan = normalizePlan(guest.plan);
-  const text = target === 'air'
-    ? `Follow-up on “${q ? q.text : 'your answer'}”: ${a.text}`
-    : a.text;
+  // On-air questions are phrased as questions; talking points keep the answer as written.
+  const answer = a.text.trim().replace(/\s+/g, ' ');
+  const excerpt = answer.length > 140 ? `${answer.slice(0, 139).trimEnd()}…` : answer;
+  const text = target === 'air' ? `Can you tell us more about “${excerpt}”?` : a.text;
+  const list = target === 'air' ? plan.airQuestions : plan.segments;
+  // Promoting the same answer twice doesn't add a duplicate.
+  if (list.some((x) => x.text.trim() === text.trim())) return guest;
   if (target === 'air') plan.airQuestions = addItem(plan.airQuestions, text, { idFn });
   else plan.segments = addItem(plan.segments, text, { idFn, minutes: 0 });
   return { ...guest, plan, updatedAt: nowIso };

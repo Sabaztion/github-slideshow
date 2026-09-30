@@ -108,7 +108,9 @@ describe('guest Q&A', () => {
     g = P.promoteAnswer(g, 'q1', 'segment', { idFn });
     g = P.promoteAnswer(g, 'q1', 'air', { idFn });
     assert.equal(g.plan.segments[0].text, 'The owl in the library');
-    assert.match(g.plan.airQuestions[0].text, /Favourite story\?.*owl/);
+    assert.equal(g.plan.airQuestions[0].text, 'Can you tell us more about “The owl in the library”?');
+    assert.equal(P.promoteAnswer(g, 'q1', 'air', { idFn }), g, 'no duplicate on-air question');
+    assert.equal(P.promoteAnswer(g, 'q1', 'segment', { idFn }), g, 'no duplicate talking point');
     assert.equal(P.promoteAnswer(g, 'nope', 'air'), g);
   });
 

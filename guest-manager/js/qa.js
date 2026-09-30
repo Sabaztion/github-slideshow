@@ -7,7 +7,7 @@ import { decodeQuestions, DEFAULT_QUESTION_BANK, QA_LIMITS, qaToText } from './p
 import { buildQaPayload, validatePayload, applySubmissions, normalizeSubmission, HONEYPOT_FIELD } from './remote.js';
 import { postSubmission } from './api.js';
 import { inspectStoredState, saveState, browserTimeZone } from './store.js';
-import { $, toast, copyTextarea, setBusy, setStatus, hideBackLinkWhenShared, deliveryNote } from './guest-page.js';
+import { $, toast, copyTextarea, setBusy, setStatus, hideBackLinkWhenShared, deliveryNote, guestErrorMessage, showErrorSummary } from './guest-page.js';
 
 const stored = inspectStoredState();
 const storedSettings = stored.status === 'ok' ? stored.state.settings : null;
@@ -123,29 +123,7 @@ form.addEventListener('input', (e) => {
 /* ---------------------------------------------------------------- */
 
 function showErrors(errors) {
-  const fields = { name: $('#in-name'), email: $('#in-email') };
-  for (const [key, input] of Object.entries(fields)) {
-    const msg = errors[key];
-    const out = $(`#err-${key}`);
-    out.textContent = msg || '';
-    out.hidden = !msg;
-    if (msg) input.setAttribute('aria-invalid', 'true');
-    else input.removeAttribute('aria-invalid');
-  }
-  const summary = $('#error-summary');
-  const msgs = Object.values(errors);
-  summary.hidden = !msgs.length;
-  if (!msgs.length) return;
-  const title = document.createElement('strong');
-  title.textContent = msgs.length === 1 ? 'Please fix one thing:' : `Please fix ${msgs.length} things:`;
-  const ul = document.createElement('ul');
-  for (const m of msgs) {
-    const li = document.createElement('li');
-    li.textContent = m;
-    ul.append(li);
-  }
-  summary.replaceChildren(title, ul);
-  summary.focus();
+  showErrorSummary($('#error-summary'), errors, { name: $('#in-name'), email: $('#in-email'), answers: () => document.querySelector('#questions textarea') });
 }
 
 function saveLocally(payload) {
@@ -187,7 +165,7 @@ async function send() {
     await postSubmission(settings.endpoint, lastPayload);
     return '';
   } catch (err) {
-    return err.message || 'Something went wrong while sending.';
+    return guestErrorMessage(err);
   } finally {
     setStatus(status, '');
   }

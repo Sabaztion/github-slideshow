@@ -6,6 +6,13 @@ import { parseListResponse, listUrl } from './remote.js';
 
 const TIMEOUT_MS = 30000;
 
+/** Error with a `kind` (network, timeout, http, setup, rejected) so pages can word it for their audience. */
+function fail(kind, message) {
+  const err = new Error(message);
+  err.kind = kind;
+  return err;
+}
+
 async function fetchJson(url, init = {}, timeoutMs = TIMEOUT_MS) {
   const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
@@ -13,18 +20,18 @@ async function fetchJson(url, init = {}, timeoutMs = TIMEOUT_MS) {
   try {
     res = await fetch(url, { ...init, credentials: 'omit', redirect: 'follow', signal: ctrl?.signal });
   } catch (err) {
-    if (err && err.name === 'AbortError') throw new Error('The request timed out. Check your connection and try again.');
-    throw new Error('Could not reach the server. Check your connection and try again.');
+    if (err && err.name === 'AbortError') throw fail('timeout', 'The request timed out. Check your connection and try again.');
+    throw fail('network', 'Could not reach the server. Check your connection and try again.');
   } finally {
     if (timer) clearTimeout(timer);
   }
-  if (!res.ok) throw new Error(`The server answered with an error (HTTP ${res.status}).`);
+  if (!res.ok) throw fail('http', `The server answered with an error (HTTP ${res.status}).`);
   const text = await res.text();
   try {
     return JSON.parse(text);
   } catch {
     // A deployment that needs sign-in returns an HTML login page instead of JSON.
-    throw new Error('The server did not return JSON. Is the web app deployed with access set to “Anyone”?');
+    throw fail('setup', 'The server did not return JSON. Is the web app deployed with access set to “Anyone”?');
   }
 }
 
@@ -37,7 +44,7 @@ export async function postSubmission(endpoint, payload) {
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(payload)
   });
-  if (!json || json.ok !== true) throw new Error(String(json?.error || 'The server did not accept the submission.'));
+  if (!json || json.ok !== true) throw fail('rejected', String(json?.error || 'The server did not accept the submission.'));
   return json;
 }
 

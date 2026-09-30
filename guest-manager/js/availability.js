@@ -11,7 +11,7 @@ import {
 import { buildAvailabilityPayload, validatePayload, applySubmissions, normalizeSubmission, HONEYPOT_FIELD } from './remote.js';
 import { postSubmission } from './api.js';
 import { inspectStoredState, saveState, browserTimeZone } from './store.js';
-import { $, toast, copyTextarea, setBusy, setStatus, hideBackLinkWhenShared, deliveryNote } from './guest-page.js';
+import { $, toast, copyTextarea, setBusy, setStatus, hideBackLinkWhenShared, deliveryNote, guestErrorMessage, showErrorSummary } from './guest-page.js';
 
 const stored = inspectStoredState();
 const storedSettings = stored.status === 'ok' ? stored.state.settings : null;
@@ -109,9 +109,15 @@ function renderGrid() {
 
   $('#week-label').textContent = `${week === 0 ? 'This week' : week === 1 ? 'Next week' : `In ${week} weeks`} · ${formatDay(current.days[0].ymd)} – ${formatDay(current.days[6].ymd)}`;
   $('#grid-caption').textContent = `Free times for the week of ${formatDay(current.days[0].ymd)}, in ${zoneLabel(viewZone)}`;
-  $('#week-prev').disabled = week === 0;
-  $('#week-next').disabled = week === MAX_WEEKS_AHEAD;
+  // aria-disabled, not disabled: a focused button that becomes disabled drops focus to the page.
+  setEnabled($('#week-prev'), week > 0);
+  setEnabled($('#week-next'), week < MAX_WEEKS_AHEAD);
   renderSummary();
+}
+
+function setEnabled(btn, on) {
+  if (on) btn.removeAttribute('aria-disabled');
+  else btn.setAttribute('aria-disabled', 'true');
 }
 
 const cellAt = (r, c) => grid.querySelector(`button.cell[data-row="${r}"][data-col="${c}"]`);
@@ -155,9 +161,38 @@ grid.addEventListener('pointerover', (e) => {
   if (btn) setCell(btn, drag.on);
 });
 
+/*
+ * While dragging near the top or bottom edge of the scrolling grid, scroll it
+ * and keep painting the cell under the pointer.
+ */
+let pointer = null;
+window.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  pointer = { x: e.clientX, y: e.clientY };
+  if (!autoScroll.running) { autoScroll.running = true; requestAnimationFrame(autoScroll); }
+});
+
+function autoScroll() {
+  if (!drag || !pointer) { autoScroll.running = false; return; }
+  const wrap = $('#avail-wrap');
+  const r = wrap.getBoundingClientRect();
+  const edge = 48;
+  let dy = 0;
+  if (pointer.y < r.top + edge) dy = -Math.ceil((r.top + edge - pointer.y) / 4);
+  else if (pointer.y > r.bottom - edge) dy = Math.ceil((pointer.y - (r.bottom - edge)) / 4);
+  if (dy) {
+    wrap.scrollTop += dy;
+    const y = Math.min(Math.max(pointer.y, r.top + 1), r.bottom - 1);
+    const btn = document.elementFromPoint(pointer.x, y)?.closest('button.cell');
+    if (btn && grid.contains(btn)) setCell(btn, drag.on);
+  }
+  requestAnimationFrame(autoScroll);
+}
+
 window.addEventListener('pointerup', () => {
   if (!drag) return;
   drag = null;
+  pointer = null;
   renderSummary({ announce: true });
 });
 
@@ -266,12 +301,23 @@ $('#zone-options').addEventListener('change', (e) => {
   renderGrid();
 });
 
-$('#week-prev').addEventListener('click', () => { if (week > 0) { week -= 1; renderGrid(); } });
-$('#week-next').addEventListener('click', () => { if (week < MAX_WEEKS_AHEAD) { week += 1; renderGrid(); } });
+$('#week-prev').addEventListener('click', () => {
+  if (week === 0) return;
+  week -= 1;
+  renderGrid();
+  if (week === 0) $('#week-next').focus(); // this button is now unavailable; keep focus on the bar
+});
+$('#week-next').addEventListener('click', () => {
+  if (week === MAX_WEEKS_AHEAD) return;
+  week += 1;
+  renderGrid();
+  if (week === MAX_WEEKS_AHEAD) $('#week-prev').focus();
+});
 $('#clear-week').addEventListener('click', () => {
   let n = 0;
   for (const d of current.days) for (const c of d.cells) if (painted.delete(c.utc)) n += 1;
   renderGrid();
+  renderSummary({ announce: true });
   toast(n ? `Cleared ${n} half hour${n === 1 ? '' : 's'} this week.` : 'Nothing to clear this week.');
 });
 
@@ -280,29 +326,7 @@ $('#clear-week').addEventListener('click', () => {
 /* ---------------------------------------------------------------- */
 
 function showErrors(errors) {
-  const fields = { name: $('#in-name'), email: $('#in-email') };
-  for (const [key, input] of Object.entries(fields)) {
-    const msg = errors[key];
-    const out = $(`#err-${key}`);
-    out.textContent = msg || '';
-    out.hidden = !msg;
-    if (msg) input.setAttribute('aria-invalid', 'true');
-    else input.removeAttribute('aria-invalid');
-  }
-  const summary = $('#error-summary');
-  const msgs = Object.values(errors);
-  summary.hidden = !msgs.length;
-  if (!msgs.length) return;
-  const title = document.createElement('strong');
-  title.textContent = msgs.length === 1 ? 'Please fix one thing:' : `Please fix ${msgs.length} things:`;
-  const ul = document.createElement('ul');
-  for (const m of msgs) {
-    const li = document.createElement('li');
-    li.textContent = m;
-    ul.append(li);
-  }
-  summary.replaceChildren(title, ul);
-  summary.focus();
+  showErrorSummary($('#error-summary'), errors, { name: $('#in-name'), email: $('#in-email'), slots: () => grid.querySelector('button.cell[tabindex="0"]') });
 }
 
 /** Save into this browser's guest list, never over unreadable data. */
@@ -346,7 +370,7 @@ async function send() {
     await postSubmission(settings.endpoint, lastPayload);
     return '';
   } catch (err) {
-    return err.message || 'Something went wrong while sending.';
+    return guestErrorMessage(err);
   } finally {
     setStatus(status, '');
   }

@@ -9,7 +9,7 @@ import {
 import { inspectStoredState, loadStoredState, saveState, browserTimeZone } from './store.js';
 import { buildIntakePayload, validatePayload, HONEYPOT_FIELD } from './remote.js';
 import { postSubmission } from './api.js';
-import { $, toast, copyTextarea, setBusy, setStatus, resizeHeadshot, deliveryNote } from './guest-page.js';
+import { $, toast, copyTextarea, setBusy, setStatus, resizeHeadshot, deliveryNote, guestErrorMessage } from './guest-page.js';
 
 const stored = loadStoredState();
 const params = readIntakeParams(window.location.search);
@@ -213,7 +213,7 @@ async function send(a) {
     $('#done-photo-note').hidden = !photoNote;
     return '';
   } catch (err) {
-    return err.message || 'Something went wrong while sending.';
+    return guestErrorMessage(err);
   } finally {
     setStatus(status, '');
   }
@@ -223,7 +223,7 @@ function fillSummary(a) {
   const n = a.availability.length;
   $('#done-consent').hidden = a.consent;
   $('#done-summary').textContent = n
-    ? `We’ll confirm one of your ${n} picked time${n === 1 ? '' : 's'} by email, along with the recording guide.`
+    ? (n === 1 ? 'We’ll confirm your picked time by email, along with the recording guide.' : `We’ll confirm one of your ${n} picked times by email, along with the recording guide.`)
     : 'We’ll email you to find a recording time, along with the recording guide.';
 }
 
@@ -350,4 +350,7 @@ $('#in-social').addEventListener('blur', (e) => {
 });
 
 renderStatic();
+// Personal links pre-fill the guest's name and email, like the other guest pages.
+if (params.guestName) form.elements.name.value = params.guestName;
+if (params.guestEmail) form.elements.email.value = params.guestEmail;
 updateSlotCount();

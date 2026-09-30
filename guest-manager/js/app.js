@@ -160,6 +160,7 @@ const VIEWS = {
   guests: { title: 'All guests', sub: () => 'Every guest in one sortable list.', search: true },
   templates: { title: 'Email templates', sub: () => 'Write each email once. Placeholders fill in per guest.', search: false },
   settings: { title: 'Settings', sub: () => 'Show details, the guest intake form and backups.', search: false },
+  plans: { title: 'Episode plans', sub: () => 'Every guest’s episode plan and pre-interview Q&A.', search: true },
   plan: { title: 'Episode plan', sub: () => { const g = findGuest(ui.planGuestId); return g ? `For ${displayName(g)}: talking points, on-air questions and the guest’s Q&A.` : ''; }, search: false }
 };
 
@@ -212,7 +213,8 @@ function setView(route, { focus = false } = {}) {
   ui.view = view;
   const meta = VIEWS[view];
   for (const link of nav.querySelectorAll('[data-view]')) {
-    if (link.dataset.view === view) link.setAttribute('aria-current', 'page');
+    // A single plan counts as being inside "Episode plans".
+    if (link.dataset.view === view || (view === 'plan' && link.dataset.view === 'plans')) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
   for (const key of Object.keys(VIEWS)) $(`#view-${key}`).hidden = key !== view;
@@ -237,6 +239,7 @@ function renderMain() {
   else if (ui.view === 'templates') renderTemplates();
   else if (ui.view === 'settings') renderSettings();
   else if (ui.view === 'plan') renderPlan();
+  else if (ui.view === 'plans') renderPlans();
 }
 
 /* ---------------------------------------------------------------- */
@@ -434,7 +437,7 @@ function freeTimesSection(g) {
               ? h('label', null, h('span', { class: 'sr-only' }, `Start time for ${formatRange(r)}`),
                 h('select', { id: `${id}-start`, class: 'range-start' }, r.slots.map((s) => h('option', { value: s, selected: s === g.recordingAt }, formatTime(s)))))
               : null,
-            h('button', { type: 'button', class: 'btn btn-quiet btn-sm', dataset: { action: 'book-range', range: String(i), first: r.slots[0] }, 'aria-describedby': `${id}-label` },
+            h('button', { type: 'button', class: 'btn btn-quiet btn-sm', dataset: { action: 'book-range', range: String(i), first: r.slots[0] }, 'aria-label': `${g.recordingAt && r.slots.includes(g.recordingAt) ? 'Change booking in' : 'Book'} ${formatRange(r)}` },
               g.recordingAt && r.slots.includes(g.recordingAt) ? 'Booked · change' : 'Book')
           )
         );
@@ -641,6 +644,9 @@ function syncOverlay() {
 
 function openGuest(id) {
   if (!findGuest(id)) return;
+  // Remember the control that opened the panel, to return focus there on close.
+  const active = document.activeElement;
+  if (active && active !== document.body && !panel.contains(active)) ui.opener = active;
   ui.selectedId = id;
   panel.hidden = false;
   app.classList.add('panel-open');
@@ -658,7 +664,10 @@ function closePanel({ restore = true } = {}) {
   app.classList.remove('panel-open');
   syncOverlay();
   renderMain();
+  const opener = ui.opener;
+  ui.opener = null;
   if (restore && id) {
+    if (opener && opener.isConnected && !opener.closest('[hidden]')) return opener.focus();
     const view = $(`#view-${ui.view}`);
     const target = view.querySelector(`[data-open-guest="${cssId(id)}"]`);
     (target || $('#view-title')).focus();
@@ -971,7 +980,7 @@ function renderCalendar() {
         h('select', { id: 'cal-avail' },
           h('option', { value: '' }, 'No one'),
           withFree.map((g) => h('option', { value: g.id, selected: overlayGuest?.id === g.id }, displayName(g))))) : null,
-      h('div', { class: 'cal-legend', 'aria-label': 'Stage colours' }, STAGES.filter((s) => s.id !== 'outreach').map((s) => stagePill(s.id)))
+      h('div', { class: 'cal-legend', role: 'group', 'aria-label': 'Stage colours' }, STAGES.filter((s) => s.id !== 'outreach').map((s) => stagePill(s.id)))
     ),
     h('table', { class: 'cal' },
       h('caption', { class: 'sr-only' }, `Recordings in ${monthLabel(year, month)} (${tz()})`),
@@ -992,6 +1001,12 @@ function initCalendar() {
     ui.calAvail = e.target.value;
     renderCalendar();
     $('#cal-avail').focus();
+    const g = findGuest(ui.calAvail);
+    if (!g) toast('Availability overlay off.');
+    else {
+      const n = upcomingRanges(g.freeSlots, '').length;
+      toast(`Showing ${n} free range${n === 1 ? '' : 's'} for ${displayName(g)}.`);
+    }
   });
   $('#view-calendar').addEventListener('click', (e) => {
     const nav = e.target.closest('[data-cal]');
@@ -1140,6 +1155,41 @@ function initTemplates() {
 /* Episode plan + guest Q&A                                          */
 /* ---------------------------------------------------------------- */
 
+/** "Episode plans": guests with a plan or Q&A first, then everyone else. */
+function renderPlans() {
+  const view = $('#view-plans');
+  const hasPlan = (g) => {
+    const p = normalizePlan(g.plan);
+    return !!(p.title || p.angle || p.segments.length || p.airQuestions.length || qaStatus(g) !== 'not-sent');
+  };
+  const list = sortGuests(filterGuests(state.guests, ui.query), 'recording');
+  const started = list.filter(hasPlan);
+  const rest = list.filter((g) => !hasPlan(g));
+  const row = (g) => {
+    const p = normalizePlan(g.plan);
+    const t = segmentTimings(p.segments.filter((x) => x.text.trim()));
+    const status = qaStatus(g);
+    return h('li', { class: 'plans-row' },
+      h('a', { class: 'plans-link', href: `#plan/${encodeURIComponent(g.id)}` },
+        h('span', { class: 'nm' }, p.title || `Episode with ${displayName(g)}`),
+        h('span', { class: 'hint' }, `${displayName(g)} · ${getStage(g.stage).label}${g.recordingAt ? ` · ${formatRecording(g.recordingAt)}` : ''}`)
+      ),
+      h('span', { class: 'mono plans-meta' }, `${t.rows.length} point${t.rows.length === 1 ? '' : 's'} · ${formatMinutes(t.total)}`),
+      h('span', { class: `qa-chip qa-${status}` }, QA_STATUS_LABELS[status])
+    );
+  };
+  fill(view,
+    h('section', { class: 'surface', 'aria-labelledby': 'h-plans-started' },
+      h('h2', { id: 'h-plans-started' }, 'Plans in progress'),
+      started.length ? h('ul', { class: 'plans-list' }, started.map(row)) : h('p', { class: 'hint small' }, ui.query ? `No plans match “${ui.query}”.` : 'No plans yet. Open a guest below to start one.')
+    ),
+    rest.length ? h('section', { class: 'surface', 'aria-labelledby': 'h-plans-rest' },
+      h('h2', { id: 'h-plans-rest' }, 'No plan yet'),
+      h('ul', { class: 'plans-list' }, rest.map(row))
+    ) : null
+  );
+}
+
 /** Q&A link for a guest: carries their questions (capped to fit a URL). */
 function qaUrl(g) {
   const qa = normalizeQa(g.qa);
@@ -1180,8 +1230,9 @@ function saveQa(g, qa, { rerender = false } = {}) {
   if (rerender) renderPlan();
 }
 
-function iconBtn(label, action, data, glyph, disabled) {
-  return h('button', { type: 'button', class: 'btn btn-quiet btn-icon', 'aria-label': label, title: label, dataset: { action, ...data }, disabled: !!disabled }, h('span', { 'aria-hidden': 'true' }, glyph));
+/** Small icon button. "Unavailable" uses aria-disabled so focus never falls off it. */
+function iconBtn(label, action, data, glyph, unavailable) {
+  return h('button', { type: 'button', class: 'btn btn-quiet btn-icon', 'aria-label': label, title: label, dataset: { action, ...data }, 'aria-disabled': unavailable ? 'true' : null }, h('span', { 'aria-hidden': 'true' }, glyph));
 }
 
 function itemRows(list, kind, { minutes = false } = {}) {
@@ -1248,7 +1299,7 @@ function renderPlan() {
         h('section', { class: 'surface', 'aria-labelledby': 'h-segments' },
           h('div', { class: 'panel-section-head' },
             h('h2', { id: 'h-segments' }, 'Talking points'),
-            h('span', { class: 'mono plan-total', id: 'seg-total' }, `Total ${formatMinutes(t.total)}`)
+            h('span', { class: 'mono plan-total', id: 'seg-total', role: 'status', 'aria-live': 'polite' }, `Total ${formatMinutes(t.total)}`)
           ),
           plan.segments.length ? h('ol', { class: 'plan-list' }, itemRows(plan.segments, 'segments', { minutes: true })) : h('p', { class: 'hint small' }, 'No talking points yet.'),
           addRow('segments', 'New talking point', { minutes: true })
@@ -1348,6 +1399,22 @@ function renderSheetForPrint(g) {
 
 function initPlan() {
   const view = $('#view-plan');
+  // Any print from the Episode plan (the button or Ctrl+P) prints the current run
+  // sheet; other views print normally.
+  window.addEventListener('beforeprint', () => {
+    const g = ui.view === 'plan' ? planGuest() : null;
+    document.body.classList.toggle('printing-sheet', !!g);
+    if (g) renderSheetForPrint(g);
+  });
+  window.addEventListener('afterprint', () => document.body.classList.remove('printing-sheet'));
+  // Show the stored (clamped) minutes once the person leaves the field.
+  view.addEventListener('change', (e) => {
+    const { list, item, prop } = e.target.dataset;
+    const g = planGuest();
+    if (!g || list !== 'segments' || prop !== 'minutes') return;
+    const it = itemListFor(g, list).find((x) => x.id === item);
+    if (it) e.target.value = it.minutes || '';
+  });
   view.addEventListener('input', (e) => {
     const g = planGuest();
     if (!g) return;
@@ -1373,6 +1440,11 @@ function initPlan() {
     const btn = e.target.closest('[data-action]');
     const g = planGuest();
     if (!btn || !g) return;
+    if (btn.getAttribute('aria-disabled') === 'true') {
+      if (btn.dataset.action === 'item-up') toast('Already first.');
+      else if (btn.dataset.action === 'item-down') toast('Already last.');
+      return;
+    }
     const { action, list, item } = btn.dataset;
     if (action === 'item-add') {
       const input = $(`#add-${list}`);
@@ -1384,9 +1456,11 @@ function initPlan() {
       focusAfterRender(`add-${list}`);
       toast('Added.');
     } else if (action === 'item-up' || action === 'item-down') {
-      saveItemList(g, list, moveItem(itemListFor(g, list), item, action === 'item-up' ? -1 : 1), { rerender: true });
-      const again = view.querySelector(`[data-action="${action}"][data-item="${cssId(item)}"]`);
-      (again && !again.disabled ? again : document.getElementById(`${list}-${item}-text`))?.focus();
+      const moved = moveItem(itemListFor(g, list), item, action === 'item-up' ? -1 : 1);
+      saveItemList(g, list, moved, { rerender: true });
+      // Focus stays on the same button of the moved item (it may now be unavailable, but stays focusable).
+      view.querySelector(`[data-action="${action}"][data-item="${cssId(item)}"]`)?.focus();
+      toast(`Moved to position ${moved.findIndex((x) => x.id === item) + 1} of ${moved.length}.`);
     } else if (action === 'item-delete') {
       const current = itemListFor(g, list);
       const idx = current.findIndex((x) => x.id === item);
@@ -1396,10 +1470,12 @@ function initPlan() {
       toast('Deleted.');
     } else if (action === 'promote') {
       const updated = promoteAnswer(g, btn.dataset.q, btn.dataset.target, { idFn: () => `p${Date.now().toString(36)}`, nowIso: nowIso() });
+      const where = btn.dataset.target === 'air' ? 'on-air questions' : 'talking points';
+      if (updated === g) return toast(`Already in ${where}.`);
       saveGuest(updated, { main: false });
       renderPlan();
       view.querySelector(`[data-action="promote"][data-q="${cssId(btn.dataset.q)}"][data-target="${btn.dataset.target}"]`)?.focus();
-      toast(btn.dataset.target === 'air' ? 'Added to on-air questions.' : 'Added to talking points.');
+      toast(`Added to ${where}.`);
     } else if (action === 'seed-questions') {
       const qa = normalizeQa(g.qa);
       const have = new Set(qa.questions.map((q) => q.text.trim().toLowerCase()));
@@ -1419,8 +1495,7 @@ function initPlan() {
       renderPlan();
       window.location.href = templateMailto(updated, 'qa');
     } else if (action === 'print-sheet') {
-      renderSheetForPrint(g);
-      window.print();
+      window.print(); // beforeprint fills in the run sheet
     } else if (action === 'download-sheet') {
       const sheet = renderSheetForPrint(g);
       const safe = displayName(g).replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'guest';
@@ -1617,7 +1692,8 @@ async function checkSubmissions({ quiet = false } = {}) {
   }
   checking = true;
   const buttons = [...document.querySelectorAll('[data-action="check-submissions"]')];
-  for (const b of buttons) { b.disabled = true; b.setAttribute('aria-busy', 'true'); }
+  // aria-disabled, not disabled: disabling the focused button would drop focus to the page.
+  for (const b of buttons) { b.setAttribute('aria-disabled', 'true'); b.setAttribute('aria-busy', 'true'); }
   setBackendStatus('Checking for new submissions…');
   const startedAt = nowIso();
   try {
@@ -1641,7 +1717,7 @@ async function checkSubmissions({ quiet = false } = {}) {
     if (!quiet) toast(`Could not check: ${err.message}`);
   } finally {
     checking = false;
-    for (const b of document.querySelectorAll('[data-action="check-submissions"]')) { b.disabled = false; b.removeAttribute('aria-busy'); }
+    for (const b of document.querySelectorAll('[data-action="check-submissions"]')) { b.removeAttribute('aria-disabled'); b.removeAttribute('aria-busy'); }
   }
 }
 

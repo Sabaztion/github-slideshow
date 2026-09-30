@@ -34,7 +34,7 @@ A small, self-contained web app for running a podcast's guest pipeline, from fir
 
 ## Episode plan and guest Q&A
 
-Each guest's panel has **Open episode plan** (`#plan/<guest id>`), a full-width view with:
+The **Episode plans** page in the sidebar lists every guest's plan, with plans in progress first. Each guest's panel has **Open episode plan** (`#plan/<guest id>`), a full-width view with:
 
 - **Episode:** working title and angle / summary.
 - **Talking points:** an ordered list you can add to, edit, reorder (↑ ↓) and delete, with optional minutes per point and a running total.
@@ -134,7 +134,7 @@ This needs Node 18 or later. On Node 22 a directory argument loads `tests/index.
 
 ## Accessibility
 
-The app uses real buttons, links and labels throughout. Every control is keyboard usable with a visible focus ring, and targets are at least 44 px. Text contrast is at least 4.5:1 and form control borders at least 3:1. The board has a Move button as an alternative to dragging. Sortable table headers expose `aria-sort`. When the details panel is a slide-over sheet on narrower screens it is announced as a modal dialog (`role="dialog"`, `aria-modal`), and the rest of the page, including the skip link, is made inert; toasts move above the panel's footer and never block taps. Search results are announced through a polite status message once typing pauses. The stage picker in the panel only moves a guest when you press Enter or leave it after using the arrow keys. Email and link fields get a gentle inline check. Intake guests who didn't agree to the release are flagged with a "No release" tag on their card and panel. On the intake form each time is also shown in the guest's own time zone.
+The app uses real buttons, links and labels throughout. Every control is keyboard usable with a visible focus ring, and targets are at least 44 px. Text contrast is at least 4.5:1 and form control borders at least 3:1. The board has a Move button as an alternative to dragging. Sortable table headers expose `aria-sort`. When the details panel is a slide-over sheet on narrower screens it is announced as a modal dialog (`role="dialog"`, `aria-modal`), and the rest of the page, including the skip link, is made inert; toasts move above the panel's footer and never block taps. Search results are announced through a polite status message once typing pauses. The stage picker in the panel only moves a guest when you press Enter or leave it after using the arrow keys. Email and link fields get a gentle inline check. Intake guests who didn't agree to the release are flagged with a "No release" tag on their card and panel. On the intake form each time is also shown in the guest's own time zone. Busy buttons (sending, checking) use `aria-disabled` and `aria-busy` instead of `disabled`, so keyboard focus never falls off them; the same goes for the week arrows on the availability page and the ↑ ↓ buttons in the episode plan (which announce "Moved to position N of M"). Closing the guest panel returns focus to whatever opened it. Guest pages link each error in the error summary to its field (the availability error links to the grid). On the availability grid, marked cells get a white focus ring, hour rules have 3:1 contrast and passed times are clearly hatched. Printing from the Episode plan (the button or Ctrl+P) prints the run sheet; other views print normally.
 
 ## Jekyll / GitHub Pages note
 

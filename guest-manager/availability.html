@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-<main class="intake intake-wide" id="main">
+<main class="intake intake-wide avail-page" id="main">
   <div class="intake-top">
     <a class="back-link" href="./">← Back to pipeline</a>
     <span class="eyebrow">Availability</span>
@@ -20,7 +20,7 @@
 
   <header>
     <h1 id="page-title" tabindex="-1">When are you free to record for <span data-show-name>our show</span>?</h1>
-    <p>Click or drag across the calendar to mark every half hour that works for you. You can switch between the show’s time zone and yours.</p>
+    <p>Click or drag across the calendar to mark every half hour that works for you.</p>
     <p class="delivery-note" id="delivery-note"></p>
   </header>
 
@@ -48,16 +48,6 @@
   <form class="intake-form" id="avail-form" novalidate>
     <div class="error-summary" id="error-summary" tabindex="-1" hidden></div>
 
-    <div class="grid-2">
-      <label class="field">Full name
-        <input type="text" name="name" id="in-name" autocomplete="name" required aria-describedby="err-name">
-        <span class="field-error" id="err-name" hidden></span>
-      </label>
-      <label class="field">Email
-        <input type="email" name="email" id="in-email" autocomplete="email" required aria-describedby="err-email">
-        <span class="field-error" id="err-email" hidden></span>
-      </label>
-    </div>
 
     <fieldset class="group" id="zone-group">
       <legend>Show times in</legend>
@@ -92,6 +82,17 @@
       <ul class="range-list" id="range-list"></ul>
       <p class="sr-only" id="paint-status" role="status" aria-live="polite"></p>
     </section>
+
+    <div class="grid-2">
+      <label class="field">Full name
+        <input type="text" name="name" id="in-name" autocomplete="name" required aria-describedby="err-name">
+        <span class="field-error" id="err-name" hidden></span>
+      </label>
+      <label class="field">Email
+        <input type="email" name="email" id="in-email" autocomplete="email" required aria-describedby="err-email">
+        <span class="field-error" id="err-email" hidden></span>
+      </label>
+    </div>
 
     <label class="field"><span>Anything else? <span class="hint">(optional)</span></span>
       <textarea name="notes" rows="2"></textarea>

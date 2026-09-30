@@ -42,19 +42,80 @@ export function setStatus(el, text) {
   if (el) el.textContent = text;
 }
 
-/** Disable a submit button while sending, and say so. */
+/**
+ * Mark a button busy while sending, and say so. It stays focusable (only
+ * aria-disabled): a truly disabled focused button would drop focus to the
+ * page. Callers guard against double sends with their own flag.
+ */
 export function setBusy(button, busy, busyLabel = 'Sending…') {
   if (!button) return;
   if (busy) {
     button.dataset.label = button.dataset.label || button.textContent;
     button.textContent = busyLabel;
     button.setAttribute('aria-disabled', 'true');
-    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
   } else {
     if (button.dataset.label) button.textContent = button.dataset.label;
     button.removeAttribute('aria-disabled');
-    button.disabled = false;
+    button.removeAttribute('aria-busy');
   }
+}
+
+/**
+ * Error summary with a link to each problem field (fields: key -> element to
+ * focus). Field messages get aria-invalid; the summary takes focus.
+ */
+export function showErrorSummary(summary, errors, fields) {
+  for (const [key, input] of Object.entries(fields)) {
+    const out = document.getElementById(`err-${key}`);
+    const msg = errors[key];
+    if (out) { out.textContent = msg || ''; out.hidden = !msg; }
+    if (!input || !out) continue;
+    if (msg) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+  }
+  const keys = Object.keys(errors);
+  if (!keys.length) {
+    summary.hidden = true;
+    summary.replaceChildren();
+    return;
+  }
+  const title = document.createElement('strong');
+  title.textContent = keys.length === 1 ? 'Please fix one thing:' : `Please fix ${keys.length} things:`;
+  const list = document.createElement('ul');
+  for (const key of keys) {
+    const li = document.createElement('li');
+    const target = typeof fields[key] === 'function' ? fields[key]() : fields[key];
+    if (target) {
+      const a = document.createElement('a');
+      a.href = target.id ? `#${target.id}` : '#';
+      a.textContent = errors[key];
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        (typeof fields[key] === 'function' ? fields[key]() : fields[key])?.focus();
+      });
+      li.append(a);
+    } else {
+      li.textContent = errors[key];
+    }
+    list.append(li);
+  }
+  summary.replaceChildren(title, list);
+  summary.hidden = false;
+  summary.focus();
+}
+
+/**
+ * What a guest sees when sending fails: short and friendly. Setup problems
+ * (wrong deployment, HTML login page) are the host's to fix, so they're not
+ * explained to the guest in detail.
+ */
+export function guestErrorMessage(err) {
+  const kind = err && err.kind;
+  if (kind === 'network') return 'We couldn’t reach the show’s server. Check your connection and try again.';
+  if (kind === 'timeout') return 'The show’s server took too long to answer. Please try again.';
+  if (kind === 'rejected' && err.message) return err.message; // the server's own reason, e.g. "Email is not valid."
+  return 'The show’s server couldn’t take your answers right now.';
 }
 
 function loadImage(file) {
