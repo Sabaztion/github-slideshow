@@ -148,6 +148,13 @@ export function normalizeGuest(raw, { idFn = defaultId } = {}) {
     : [];
   g.plan = normalizePlan(src.plan);
   g.qa = normalizeQa(src.qa);
+  // Secret for this guest's personal links (see remote.js applySubmissions).
+  g.token = typeof src.token === 'string' && TOKEN_RE.test(src.token) ? src.token : '';
+  // Submissions that matched only by email or id wait here for the host.
+  g.pending = Array.isArray(src.pending)
+    ? src.pending.filter((x) => x && typeof x === 'object' && !Array.isArray(x) && typeof x.id === 'string' && x.id).slice(-20)
+      .map((x) => JSON.parse(JSON.stringify(x)))
+    : [];
   g.sample = src.sample === true;
   const now = new Date().toISOString();
   g.createdAt = typeof src.createdAt === 'string' ? src.createdAt : now;
@@ -476,17 +483,41 @@ export function defaultSettings(timeZone = 'UTC') {
  * looks like https://script.google.com/macros/s/…/exec), or plain http on
  * localhost for testing. Returns the cleaned URL or ''.
  */
+export const APPS_SCRIPT_RE = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
+
 export function normalizeEndpoint(url) {
   const raw = String(url || '').trim();
   if (!raw || raw.length > 500) return '';
   let u;
   try { u = new URL(raw); } catch { return ''; }
-  const local = u.hostname === 'localhost' || u.hostname === '127.0.0.1';
-  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && local)) return '';
   if (u.username || u.password) return '';
-  u.hash = '';
-  return u.href;
+  // Development only: a local mock server.
+  const local = u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+  if (local && (u.protocol === 'http:' || u.protocol === 'https:')) {
+    u.hash = '';
+    return u.href;
+  }
+  // Otherwise only a deployed Apps Script web app, with no query or fragment.
+  const clean = `${u.origin}${u.pathname}`;
+  return APPS_SCRIPT_RE.test(clean) && !u.search ? clean : '';
 }
+
+/** Host name of an endpoint, for telling people where data goes. */
+export function endpointHost(url) {
+  try { return new URL(url).hostname; } catch { return ''; }
+}
+
+/** Random secret put in a guest's personal links; submissions carrying it are trusted. */
+export function newGuestToken() {
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const b = new Uint8Array(18);
+    crypto.getRandomValues(b);
+    return 't' + [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+  }
+  return 't' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
+export const TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
 
 export function normalizeSettings(raw, fallbackTz = 'UTC') {
   const base = defaultSettings(fallbackTz);
@@ -555,6 +586,12 @@ export function parseState(json, { idFn = defaultId, timeZone = 'UTC' } = {}) {
     guests,
     templates: normalizeTemplates(data.templates)
   };
+}
+
+/** Give every guest a link token (returns the same state when none is missing). */
+export function ensureGuestTokens(state, tokenFn = newGuestToken) {
+  if (state.guests.every((g) => g.token)) return state;
+  return { ...state, guests: state.guests.map((g) => (g.token ? g : { ...g, token: tokenFn() })) };
 }
 
 export function upsertGuest(state, guest) {
@@ -795,7 +832,8 @@ export function buildIntakeUrl(base, settings, { nowLocal, guest, slots: withSlo
   const api = normalizeEndpoint(settings.intakeEndpoint);
   if (api) params.set('api', api);
   if (guest) {
-    if (guest.id) params.set('gid', guest.id);
+    // The guest's token, not their id: only the token makes a submission trusted.
+    if (guest.token) params.set('t', guest.token);
     if (guest.name) params.set('name', String(guest.name).trim());
     if (guest.email) params.set('email', String(guest.email).trim());
   }
@@ -823,6 +861,8 @@ export function readIntakeParams(search) {
   if (api) out.endpoint = api;
   const gid = p.get('gid');
   if (gid && /^[A-Za-z0-9_-]{1,64}$/.test(gid)) out.guestId = gid;
+  const token = p.get('t');
+  if (token && TOKEN_RE.test(token)) out.guestToken = token;
   const name = p.get('name');
   if (name && name.trim()) out.guestName = name.trim().slice(0, 120);
   const email = p.get('email');

@@ -135,7 +135,7 @@ export function normalizeQa(raw) {
   const src = q.answers && typeof q.answers === 'object' ? q.answers : {};
   for (const [id, a] of Object.entries(src)) {
     if (!ID_RE.test(id) || !a || typeof a !== 'object') continue;
-    answers[id] = { text: str(a.text, QA_LIMITS.answer), answeredAt: isoOrEmpty(a.answeredAt) };
+    answers[id] = { text: str(a.text, QA_LIMITS.answer), answeredAt: isoOrEmpty(a.answeredAt), question: str(a.question, QA_LIMITS.question) };
   }
   return {
     questions,
@@ -241,7 +241,9 @@ export function mergeQaAnswers(qaRaw, { answers = [], topics = '', submittedAt }
     }
     if (!text) continue;
     if (newer(qa.answers[a.id])) {
-      qa.answers[a.id] = { text, answeredAt: at };
+      // Keep the question text with the answer, so it still makes sense if
+      // the host later deletes or rewords the question.
+      qa.answers[a.id] = { text, answeredAt: at, question: str(a.question, QA_LIMITS.question).trim() };
       changed = true;
     }
   }
@@ -253,6 +255,16 @@ export function mergeQaAnswers(qaRaw, { answers = [], topics = '', submittedAt }
   }
   if (changed && (!qa.answeredAt || qa.answeredAt < at)) qa.answeredAt = at;
   return qa;
+}
+
+/**
+ * Answers whose question is no longer on the guest's list (deleted, or the
+ * list was full when they arrived). They are shown separately, never hidden.
+ */
+export function orphanAnswers(qaRaw) {
+  const qa = normalizeQa(qaRaw);
+  const ids = new Set(qa.questions.map((q) => q.id));
+  return Object.entries(qa.answers).filter(([id, a]) => !ids.has(id) && a.text).map(([id, a]) => ({ id, ...a, question: a.question || 'A question that was removed' }));
 }
 
 /**
@@ -302,7 +314,10 @@ export function runSheet(guest, { showName = '', recordingLabel = '' } = {}) {
     segments: timings.rows,
     totalMinutes: timings.total,
     airQuestions: plan.airQuestions.filter((q) => q.text.trim()),
-    answers: qa.questions.map((q) => ({ question: q.text, answer: qa.answers[q.id]?.text || '', answeredAt: qa.answers[q.id]?.answeredAt || '' })).filter((x) => x.answer),
+    answers: [
+      ...qa.questions.map((q) => ({ question: q.text, answer: qa.answers[q.id]?.text || '', answeredAt: qa.answers[q.id]?.answeredAt || '' })),
+      ...orphanAnswers(qa).map((a) => ({ question: a.question, answer: a.text, answeredAt: a.answeredAt }))
+    ].filter((x) => x.answer),
     topics: qa.topics.trim()
   };
 }

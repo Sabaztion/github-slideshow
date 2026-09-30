@@ -11,7 +11,7 @@ import {
 import { buildAvailabilityPayload, validatePayload, applySubmissions, normalizeSubmission, HONEYPOT_FIELD } from './remote.js';
 import { postSubmission } from './api.js';
 import { inspectStoredState, saveState, browserTimeZone } from './store.js';
-import { $, toast, copyTextarea, setBusy, setStatus, hideBackLinkWhenShared } from './guest-page.js';
+import { $, toast, copyTextarea, setBusy, setStatus, hideBackLinkWhenShared, deliveryNote } from './guest-page.js';
 
 const stored = inspectStoredState();
 const storedSettings = stored.status === 'ok' ? stored.state.settings : null;
@@ -24,7 +24,7 @@ const settings = {
   endpoint: params.endpoint || storedSettings?.intakeEndpoint || ''
 };
 const guestZone = browserTimeZone();
-const guestId = params.guestId || '';
+const guestToken = params.guestToken || '';
 
 const form = $('#avail-form');
 const grid = $('#avail-grid');
@@ -191,6 +191,14 @@ grid.addEventListener('keydown', (e) => {
 /* Summary                                                           */
 /* ---------------------------------------------------------------- */
 
+/**
+ * Exact instants of the marked half hours. Sent alongside host times so two
+ * different instants in a DST fall-back hour stay distinct.
+ */
+function utcSlots() {
+  return [...painted].sort((a, b) => a - b).map((ms) => `${new Date(ms).toISOString().slice(0, 16)}Z`);
+}
+
 function hostSlots() {
   return [...painted].sort((a, b) => a - b).map((ms) => utcToLocal(ms, settings.timeZone));
 }
@@ -353,7 +361,7 @@ form.addEventListener('submit', async (e) => {
   showErrors(errors);
   if (Object.keys(errors).length) return;
   lastPayload = buildAvailabilityPayload(
-    { name: f.name.value, email: f.email.value, guestId, slots: hostSlots(), notes: f.notes.value, guestTimeZone: guestZone },
+    { name: f.name.value, email: f.email.value, token: guestToken, slots: hostSlots(), slotsUtc: utcSlots(), notes: f.notes.value, guestTimeZone: guestZone },
     { showName: settings.showName, timeZone: settings.timeZone, honeypot: f[HONEYPOT_FIELD]?.value }
   );
   const invalid = validatePayload(lastPayload);
@@ -400,7 +408,7 @@ $('#copy-text').addEventListener('click', async () => {
 hideBackLinkWhenShared();
 for (const el of document.querySelectorAll('[data-show-name]')) el.textContent = settings.showName;
 document.title = `Availability · ${settings.showName}`;
-if (settings.endpoint) $('#delivery-note').textContent = `Your times go straight to ${settings.showName}’s own Google Sheet. Nobody else receives them.`;
+if (settings.endpoint) $('#delivery-note').textContent = deliveryNote('Your times', settings.showName, settings.endpoint);
 $('#hp-field input').name = HONEYPOT_FIELD;
 if (params.guestName) form.elements.name.value = params.guestName;
 if (params.guestEmail) form.elements.email.value = params.guestEmail;

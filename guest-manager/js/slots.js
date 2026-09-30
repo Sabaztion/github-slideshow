@@ -106,7 +106,10 @@ export function mergeRanges(slots, step = SLOT_MINUTES) {
 
 /** "Tue, Oct 6 · 2:00 PM – 4:00 PM" (the end may fall on the next day). */
 export function formatRange(r) {
-  const sameDay = r.start.slice(0, 10) === r.end.slice(0, 10) || r.end.slice(11) === '00:00';
+  const startDay = r.start.slice(0, 10);
+  const endDay = r.end.slice(0, 10);
+  // A range ending at midnight right after its start day reads as the same day ("… – 12:00 AM").
+  const sameDay = startDay === endDay || (r.end.slice(11) === '00:00' && addDays(startDay, 1) === endDay);
   return `${formatDay(r.start)} · ${formatTime(r.start)} – ${sameDay ? '' : `${formatDay(r.end)} `}${formatTime(r.end)}`;
 }
 

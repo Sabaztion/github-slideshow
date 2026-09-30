@@ -7,7 +7,7 @@ import { decodeQuestions, DEFAULT_QUESTION_BANK, QA_LIMITS, qaToText } from './p
 import { buildQaPayload, validatePayload, applySubmissions, normalizeSubmission, HONEYPOT_FIELD } from './remote.js';
 import { postSubmission } from './api.js';
 import { inspectStoredState, saveState, browserTimeZone } from './store.js';
-import { $, toast, copyTextarea, setBusy, setStatus, hideBackLinkWhenShared } from './guest-page.js';
+import { $, toast, copyTextarea, setBusy, setStatus, hideBackLinkWhenShared, deliveryNote } from './guest-page.js';
 
 const stored = inspectStoredState();
 const storedSettings = stored.status === 'ok' ? stored.state.settings : null;
@@ -19,14 +19,14 @@ const settings = {
   hostEmail: params.hostEmail || storedSettings?.hostEmail || '',
   endpoint: params.endpoint || storedSettings?.intakeEndpoint || ''
 };
-const guestId = params.guestId || '';
+const guestToken = params.guestToken || '';
 const fromLink = decodeQuestions(search.get('qs'));
 const questions = fromLink.length
   ? fromLink
   : (storedSettings?.questionBank?.length ? storedSettings.questionBank : DEFAULT_QUESTION_BANK).map((text, i) => ({ id: `b${i + 1}`, text }));
 
 const form = $('#qa-form');
-const DRAFT_KEY = `podcast-guest-manager:qa-draft:${guestId || settings.showName}`;
+const DRAFT_KEY = `podcast-guest-manager:qa-draft:${guestToken ? guestToken.slice(0, 10) : settings.showName}`;
 let sending = false;
 let lastPayload = null;
 
@@ -199,7 +199,7 @@ form.addEventListener('submit', async (e) => {
   const d = collect();
   const errors = validateIntake(d);
   lastPayload = buildQaPayload(
-    { name: d.name, email: d.email, guestId, topics: d.topics, answers: questions.map((q) => ({ id: q.id, question: q.text, answer: d.answers[q.id] })) },
+    { name: d.name, email: d.email, token: guestToken, topics: d.topics, answers: questions.map((q) => ({ id: q.id, question: q.text, answer: d.answers[q.id] })) },
     { showName: settings.showName, timeZone: settings.timeZone, honeypot: form.elements[HONEYPOT_FIELD]?.value }
   );
   if (!Object.keys(errors).length) {
@@ -250,7 +250,7 @@ $('#copy-text').addEventListener('click', async () => {
 hideBackLinkWhenShared();
 for (const el of document.querySelectorAll('[data-show-name]')) el.textContent = settings.showName;
 document.title = `Pre-interview questions · ${settings.showName}`;
-if (settings.endpoint) $('#delivery-note').textContent = `Your answers go straight to ${settings.showName}’s own Google Sheet. Nobody else receives them.`;
+if (settings.endpoint) $('#delivery-note').textContent = deliveryNote('Your answers', settings.showName, settings.endpoint);
 $('#hp-field input').name = HONEYPOT_FIELD;
 renderQuestions();
 if (!restoreDraft()) {

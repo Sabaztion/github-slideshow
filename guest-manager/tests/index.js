@@ -9,3 +9,4 @@ import './backend.test.js';
 import './slots.test.js';
 import './plan.test.js';
 import './remote.test.js';
+import './security.test.js';

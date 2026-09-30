@@ -52,21 +52,31 @@ var LIMITS = {
   cell: 45000 // Sheets allows 50,000 characters per cell
 };
 
-var RATE_LIMIT = { perEmail: 5, windowSeconds: 600, global: 60, globalWindowSeconds: 60 };
+var RATE_LIMIT = { perEmail: 5, windowSeconds: 600, global: 30, globalWindowSeconds: 60 };
+
+/*
+ * Daily caps (reset at midnight UTC). They bound what a
+ * bot changing email addresses can do: rows in the sheet, photos in Drive and
+ * notification emails (MailApp has its own daily quota).
+ */
+var DAILY = { submissions: 200, headshots: 100, notifications: 20 };
+
+/** Most rows one list call reads per sheet (the newest ones). */
+var LIST_MAX_ROWS = 1000;
 
 var SHEETS = {
   intake: {
     name: 'Submissions',
     headers: ['id', 'submittedAt', 'type', 'name', 'pronouns', 'email', 'social', 'role', 'topic', 'bio',
-      'availability', 'timeZone', 'setup', 'notes', 'consent', 'headshotName', 'headshotUrl', 'linkShow']
+      'availability', 'timeZone', 'setup', 'notes', 'consent', 'headshotName', 'headshotUrl', 'linkShow', 'token']
   },
   availability: {
     name: 'Availability',
-    headers: ['id', 'submittedAt', 'type', 'guestId', 'name', 'email', 'timeZone', 'guestTimeZone', 'slots', 'notes', 'linkShow']
+    headers: ['id', 'submittedAt', 'type', 'guestId', 'name', 'email', 'timeZone', 'guestTimeZone', 'slots', 'notes', 'linkShow', 'token', 'slotsUtc']
   },
   qa: {
     name: 'QA',
-    headers: ['id', 'submittedAt', 'type', 'guestId', 'name', 'email', 'answers', 'topics', 'linkShow']
+    headers: ['id', 'submittedAt', 'type', 'guestId', 'name', 'email', 'answers', 'topics', 'linkShow', 'token']
   }
 };
 
@@ -110,19 +120,21 @@ function handlePost_(e) {
     if (!checked.ok) return fail_(checked.error);
     var s = checked.value;
 
-    if (!rateLimitOk_(s.email)) return fail_('Too many submissions in a short time. Please wait a few minutes and try again.');
-
     var lock = LockService.getScriptLock();
     lock.waitLock(20000);
     try {
+      // Checked inside the lock so parallel requests can't slip past the counters.
+      var limited = rateLimitOk_(s.email);
+      if (limited !== '') return fail_(limited);
       var id = newId_();
       var now = new Date();
       if (s.type === 'intake' && s.headshot) {
-        s.headshotUrl = saveHeadshot_(s.headshot, id, s.name);
+        if (takeDaily_('headshots', DAILY.headshots)) s.headshotUrl = saveHeadshot_(s.headshot, id, s.name);
+        else s.headshotSkipped = true; // over today's photo cap: keep the answers, skip the file
       }
       appendRow_(s.type, rowFor_(s, id, now));
       notify_(s, id);
-      return { ok: true, id: id };
+      return s.headshotSkipped ? { ok: true, id: id, note: 'photo-not-saved' } : { ok: true, id: id };
     } finally {
       lock.releaseLock();
     }
@@ -149,6 +161,14 @@ var SLOT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 var GUEST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 var ITEM_ID_RE = /^[A-Za-z0-9_-]{1,24}$/;
 var TZ_RE = /^[A-Za-z0-9_+\-\/]{1,64}$/;
+var TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
+var UTC_SLOT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z$/;
+var CONTROL_RE = /[\u0000-\u001f\u007f]/g;
+
+/** Single-line text: like text_, with control characters (newlines, tabs, NUL...) removed. */
+function line_(value, max, label, errors) {
+  return text_(typeof value === 'string' ? value.replace(CONTROL_RE, ' ') : value, max, label, errors).replace(/\s+/g, ' ');
+}
 
 /** Text field: string, trimmed, at most `max` characters, else an error. */
 function text_(value, max, label, errors) {
@@ -160,6 +180,27 @@ function text_(value, max, label, errors) {
   var v = String(value).trim();
   if (v.length > max) errors.push(label + ' is too long (' + max + ' characters at most).');
   return v.slice(0, max);
+}
+
+/** Exact instants "YYYY-MM-DDTHH:mmZ" (they stay distinct across a DST change). */
+function utcSlots_(value, max, errors) {
+  if (value === undefined || value === null || value === '') return [];
+  if (!Array.isArray(value)) {
+    errors.push('Free times must be a list.');
+    return [];
+  }
+  if (value.length > max) errors.push('Too many free times (' + max + ' at most).');
+  var seen = {};
+  var out = [];
+  for (var i = 0; i < value.length && out.length < max; i++) {
+    var s = String(value[i]);
+    if (!UTC_SLOT_RE.test(s) || isNaN(Date.parse(s))) {
+      errors.push('Free times contain an invalid time.');
+      break;
+    }
+    if (!seen[s]) { seen[s] = true; out.push(s); }
+  }
+  return out.sort();
 }
 
 function slots_(value, max, label, errors) {
@@ -195,13 +236,15 @@ function validateSubmission_(body) {
   var type = body.type === undefined ? 'intake' : body.type;
   if (type !== 'intake' && type !== 'availability' && type !== 'qa') return { ok: false, error: 'Unknown submission type.' };
   var v = { type: type };
-  v.name = text_(body.name, LIMITS.name, 'Name', errors);
-  v.email = text_(body.email, LIMITS.email, 'Email', errors);
-  v.linkShow = text_(body.show, LIMITS.show, 'Show', errors);
+  v.name = line_(body.name, LIMITS.name, 'Name', errors);
+  v.email = line_(body.email, LIMITS.email, 'Email', errors);
+  v.linkShow = line_(body.show, LIMITS.show, 'Show', errors);
+  var token = line_(body.token, 64, 'Token', errors);
+  v.token = TOKEN_RE.test(token) ? token : '';
   if (!v.name) errors.push('Name is required.');
   if (!v.email) errors.push('Email is required.');
   else if (!EMAIL_RE.test(v.email)) errors.push('Email is not valid.');
-  var tz = text_(body.timeZone, LIMITS.timeZone, 'Time zone', errors);
+  var tz = line_(body.timeZone, LIMITS.timeZone, 'Time zone', errors);
   v.timeZone = TZ_RE.test(tz) ? tz : '';
 
   if (type === 'intake') {
@@ -223,11 +266,12 @@ function validateSubmission_(body) {
   } else if (type === 'availability') {
     var gid = text_(body.guestId, LIMITS.guestId, 'Guest id', errors);
     v.guestId = GUEST_ID_RE.test(gid) ? gid : '';
-    var gtz = text_(body.guestTimeZone, LIMITS.timeZone, 'Guest time zone', errors);
+    var gtz = line_(body.guestTimeZone, LIMITS.timeZone, 'Guest time zone', errors);
     v.guestTimeZone = TZ_RE.test(gtz) ? gtz : '';
     v.slots = slots_(body.slots, LIMITS.slots, 'free times', errors);
+    v.slotsUtc = utcSlots_(body.slotsUtc, LIMITS.slots, errors);
     v.notes = text_(body.notes, LIMITS.notes, 'Notes', errors);
-    if (!v.slots.length) errors.push('Pick at least one free time.');
+    if (!v.slots.length && !v.slotsUtc.length) errors.push('Pick at least one free time.');
   } else {
     var qid = text_(body.guestId, LIMITS.guestId, 'Guest id', errors);
     v.guestId = GUEST_ID_RE.test(qid) ? qid : '';
@@ -265,8 +309,26 @@ function validateHeadshot_(h) {
   var pad = data.slice(-2) === '==' ? 2 : data.slice(-1) === '=' ? 1 : 0;
   var bytes = Math.floor(data.length * 3 / 4) - pad;
   if (bytes > LIMITS.headshotBytes) return { ok: false, error: 'The photo is too large (1.5 MB at most).' };
+  if (imageKind_(data) !== type) return { ok: false, error: 'The photo’s contents don’t match its type.' };
   var name = String(h.name || 'headshot').replace(/[^\w .-]/g, '').slice(0, LIMITS.headshotName) || 'headshot';
   return { ok: true, value: { name: name, type: type, data: data } };
+}
+
+/** Image type from the file's first bytes (magic numbers), or ''. */
+function imageKind_(base64) {
+  var head;
+  try {
+    head = Utilities.base64Decode(base64.slice(0, 16)).map(function (b) { return (b + 256) % 256; });
+  } catch (err) {
+    return '';
+  }
+  var at = function (i) { return head[i]; };
+  if (at(0) === 0xFF && at(1) === 0xD8 && at(2) === 0xFF) return 'image/jpeg';
+  if (at(0) === 0x89 && at(1) === 0x50 && at(2) === 0x4E && at(3) === 0x47) return 'image/png';
+  var riff = String.fromCharCode(at(0), at(1), at(2), at(3));
+  var webp = String.fromCharCode(at(8), at(9), at(10), at(11));
+  if (riff === 'RIFF' && webp === 'WEBP') return 'image/webp';
+  return '';
 }
 
 /** Constant-time comparison of the supplied key with READ_KEY. */
@@ -279,7 +341,10 @@ function isAuthorized_(key) {
   return diff === 0;
 }
 
-/** Up to RATE_LIMIT.perEmail submissions per email per window, plus a global cap. */
+/**
+ * Rate limits: per email (10 minutes), all submissions (per minute), and a
+ * daily cap. Returns '' when allowed, else a message. Call inside the lock.
+ */
 function rateLimitOk_(email) {
   var cache = CacheService.getScriptCache();
   var keys = [
@@ -288,13 +353,43 @@ function rateLimitOk_(email) {
   ];
   for (var i = 0; i < keys.length; i++) {
     var n = Number(cache.get(keys[i].key) || 0);
-    if (n >= keys[i].max) return false;
+    if (n >= keys[i].max) return 'Too many submissions in a short time. Please wait a few minutes and try again.';
   }
+  if (!takeDaily_('submissions', DAILY.submissions)) return 'The show has received too many submissions today. Please try again tomorrow or email the show.';
   for (var j = 0; j < keys.length; j++) {
     var m = Number(cache.get(keys[j].key) || 0);
     cache.put(keys[j].key, String(m + 1), keys[j].ttl);
   }
+  return '';
+}
+
+/** Today's date (UTC), "yyyy-MM-dd". Daily caps reset at midnight UTC. */
+function today_() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Count one use of a daily allowance stored in Script Properties. Returns
+ * false (and counts nothing) when today's cap is reached. Older days' counters
+ * are removed as a new day starts.
+ */
+function takeDaily_(name, cap) {
+  var props = PropertiesService.getScriptProperties();
+  var key = 'daily:' + today_() + ':' + name;
+  var n = Number(props.getProperty(key) || 0);
+  if (n >= cap) return false;
+  if (n === 0) {
+    var all = props.getProperties ? props.getProperties() : {};
+    for (var k in all) {
+      if (k.indexOf('daily:') === 0 && k.indexOf('daily:' + today_() + ':') !== 0) props.deleteProperty(k);
+    }
+  }
+  props.setProperty(key, String(n + 1));
   return true;
+}
+
+function dailyCount_(name) {
+  return Number(PropertiesService.getScriptProperties().getProperty('daily:' + today_() + ':' + name) || 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -312,6 +407,7 @@ function unescapeCell_(v) {
   return /^'[=+\-@\t\r]/.test(v) ? v.slice(1) : v;
 }
 
+/** A record for the sheet: field name -> value (a Date for submittedAt). */
 function rowFor_(s, id, now) {
   var r = { id: id, submittedAt: now, type: s.type };
   for (var k in s) if (Object.prototype.hasOwnProperty.call(s, k) && k !== 'headshot') r[k] = s[k];
@@ -322,13 +418,11 @@ function rowFor_(s, id, now) {
     r.consent = s.consent ? 'TRUE' : 'FALSE';
   } else if (s.type === 'availability') {
     r.slots = s.slots.join(', ');
+    r.slotsUtc = s.slotsUtc.join(', ');
   } else {
     r.answers = JSON.stringify(s.answers);
   }
-  return SHEETS[s.type].headers.map(function (h) {
-    var val = r[h] === undefined || r[h] === null ? '' : r[h];
-    return val instanceof Date ? val : escapeCell_(String(val));
-  });
+  return r;
 }
 
 function spreadsheet_() {
@@ -336,35 +430,100 @@ function spreadsheet_() {
   return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
 }
 
-function sheetFor_(type, create) {
+/**
+ * The sheet for a submission type. With `create`, it is created if missing,
+ * its header row gets any columns added in newer versions of this script, and
+ * every column except submittedAt is formatted as plain text.
+ */
+function sheetFor_(type, create, reformat) {
   var ss = spreadsheet_();
   var def = SHEETS[type];
   var sheet = ss.getSheetByName(def.name);
-  if (!sheet && create) {
-    sheet = ss.insertSheet(def.name);
-  }
-  if (sheet && create && sheet.getLastRow() === 0) {
-    sheet.appendRow(def.headers);
-    sheet.setFrozenRows(1);
-  }
+  if (!sheet && create) sheet = ss.insertSheet(def.name);
+  if (sheet && create) ensureHeaders_(sheet, def.headers, reformat);
   return sheet;
 }
 
-function appendRow_(type, row) {
-  sheetFor_(type, true).appendRow(row);
+function headersOf_(sheet) {
+  var cols = sheet.getLastColumn();
+  if (!cols || sheet.getLastRow() === 0) return [];
+  return sheet.getRange(1, 1, 1, cols).getValues()[0].map(String);
 }
 
-/** All submissions (every type) newer than `since`, oldest first. */
+function ensureHeaders_(sheet, wanted, reformat) {
+  var have = headersOf_(sheet);
+  var missing = wanted.filter(function (h) { return have.indexOf(h) < 0; });
+  if (missing.length) {
+    sheet.getRange(1, have.length + 1, 1, missing.length).setValues([missing]);
+    have = have.concat(missing);
+    sheet.setFrozenRows(1);
+  }
+  if (!missing.length && !reformat) return have;
+  // Plain text, so Sheets never turns "3/4", "TRUE", "0012" or a slot time into a date or number.
+  var rows = Math.max(sheet.getMaxRows(), 2);
+  for (var c = 0; c < have.length; c++) {
+    sheet.getRange(1, c + 1, rows, 1).setNumberFormat(have[c] === 'submittedAt' ? 'yyyy-mm-dd hh:mm:ss' : '@');
+  }
+  return have;
+}
+
+/** Write one record under the sheet's own header order, as text (setValues, not appendRow). */
+function appendRow_(type, record) {
+  var sheet = sheetFor_(type, true);
+  var headers = headersOf_(sheet);
+  var row = sheet.getLastRow() + 1;
+  if (row > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), 100);
+  var values = headers.map(function (h) {
+    var v = record[h] === undefined || record[h] === null ? '' : record[h];
+    return v instanceof Date ? v : escapeCell_(String(v));
+  });
+  var formats = headers.map(function (h) { return h === 'submittedAt' ? 'yyyy-mm-dd hh:mm:ss' : '@'; });
+  var range = sheet.getRange(row, 1, 1, headers.length);
+  range.setNumberFormats([formats]);
+  range.setValues([values]);
+}
+
+/**
+ * First data row (2-based) whose submittedAt is after `sinceMs`. Rows are
+ * written in time order, so this reads only the submittedAt column, in chunks
+ * from the end, and stops at the first older row.
+ */
+function firstRowAfter_(sheet, tsCol, sinceMs, lastRow) {
+  var first = lastRow + 1;
+  var chunk = 200;
+  for (var end = lastRow; end >= 2; end -= chunk) {
+    var start = Math.max(2, end - chunk + 1);
+    var vals = sheet.getRange(start, tsCol, end - start + 1, 1).getValues();
+    for (var i = vals.length - 1; i >= 0; i--) {
+      var v = vals[i][0];
+      var ms = v instanceof Date ? v.getTime() : Date.parse(String(v));
+      if (!(ms > sinceMs)) return first;
+      first = start + i;
+    }
+  }
+  return first;
+}
+
+/**
+ * Submissions (every type) newer than `since`, oldest first. Only the rows
+ * after `since` are read, and at most LIST_MAX_ROWS per sheet.
+ */
 function listSubmissions_(since) {
   var sinceMs = since ? Date.parse(since) : NaN;
   var out = [];
   var types = ['intake', 'availability', 'qa'];
   for (var t = 0; t < types.length; t++) {
     var sheet = sheetFor_(types[t], false);
-    if (!sheet || sheet.getLastRow() < 2) continue;
-    var values = sheet.getDataRange().getValues();
-    var headers = values[0].map(String);
-    for (var i = 1; i < values.length; i++) {
+    if (!sheet) continue;
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) continue;
+    var headers = headersOf_(sheet);
+    var tsCol = headers.indexOf('submittedAt') + 1;
+    var first = !isNaN(sinceMs) && tsCol > 0 ? firstRowAfter_(sheet, tsCol, sinceMs, lastRow) : 2;
+    first = Math.max(first, lastRow - LIST_MAX_ROWS + 1, 2);
+    if (first > lastRow) continue;
+    var values = sheet.getRange(first, 1, lastRow - first + 1, headers.length).getValues();
+    for (var i = 0; i < values.length; i++) {
       var rec = {};
       for (var c = 0; c < headers.length; c++) {
         var cell = values[i][c];
@@ -372,8 +531,7 @@ function listSubmissions_(since) {
       }
       if (!rec.id) continue;
       rec.type = types[t];
-      var at = Date.parse(rec.submittedAt);
-      if (!isNaN(sinceMs) && !(at > sinceMs)) continue;
+      if (!isNaN(sinceMs) && !(Date.parse(rec.submittedAt) > sinceMs)) continue;
       if (types[t] === 'intake') rec.consent = rec.consent === 'TRUE' || rec.consent === 'true';
       if (types[t] === 'qa') {
         try { rec.answers = JSON.parse(rec.answers || '[]'); } catch (err) { rec.answers = []; }
@@ -406,17 +564,24 @@ function saveHeadshot_(h, id, guestName) {
   return headshotFolder_().createFile(blob).getUrl();
 }
 
-/** Optional email to NOTIFY_EMAIL (a Script Property), never an address from the request. */
+/**
+ * Optional email to NOTIFY_EMAIL (a Script Property), never an address from
+ * the request. At most DAILY.notifications a day; the last one says so.
+ */
 function notify_(s, id) {
   var to = PropertiesService.getScriptProperties().getProperty('NOTIFY_EMAIL');
   if (!to || !EMAIL_RE.test(to)) return;
+  if (!takeDaily_('notifications', DAILY.notifications)) return;
+  var last = dailyCount_('notifications') === DAILY.notifications;
   var what = s.type === 'availability' ? 'availability' : s.type === 'qa' ? 'pre-interview answers' : 'intake form';
+  var who = String(s.name).replace(CONTROL_RE, ' ').slice(0, 80);
   try {
     MailApp.sendEmail({
       to: to,
-      subject: showName_() + ': new ' + what + ' from ' + s.name,
-      body: s.name + ' (' + s.email + ') sent their ' + what + '.\nSubmission id: ' + id +
-        '\n\nOpen the guest manager and press "Check for new submissions" to import it.'
+      subject: (showName_() + ': new ' + what + ' from ' + who).replace(CONTROL_RE, ' '),
+      body: who + ' (' + s.email + ') sent their ' + what + '.\nSubmission id: ' + id +
+        '\n\nOpen the guest manager and press "Check for new submissions" to import it.' +
+        (last ? '\n\nThis is the last notification today (limit ' + DAILY.notifications + '). Further submissions are still saved; check the sheet or the app.' : '')
     });
   } catch (err) {
     console.error('Notification failed', err);
@@ -466,9 +631,9 @@ function setup() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (ss) props.setProperty('SPREADSHEET_ID', ss.getId());
   props.setProperty('SHOW_NAME', SHOW_NAME);
-  sheetFor_('intake', true);
-  sheetFor_('availability', true);
-  sheetFor_('qa', true);
+  sheetFor_('intake', true, true);
+  sheetFor_('availability', true, true);
+  sheetFor_('qa', true, true);
   headshotFolder_();
   var key = props.getProperty('READ_KEY');
   if (!key || key.length < 16) {

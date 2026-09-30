@@ -8,8 +8,8 @@ import {
   parseLocal, toLocalString, buildIntakeUrl, countByStage, isValidEmail, softUrlWarning, hasNoRelease, bookSlot
 } from './logic.js';
 import { loadState, loadStoredState, saveState, browserTimeZone, STORAGE_KEY, unreadableData, releaseUnreadable, loadSync, saveSync } from './store.js';
-import { normalizeEndpoint, safeHttpUrl } from './logic.js';
-import { applySubmissions, importSummary, sinceFor } from './remote.js';
+import { normalizeEndpoint, safeHttpUrl, ensureGuestTokens, endpointHost } from './logic.js';
+import { applySubmissions, importSummary, sinceFor, keyUsable, acceptPending, discardPending, describePending } from './remote.js';
 import { upcomingRanges, rangesByDay, formatRange } from './slots.js';
 import {
   addItem, updateItem, moveItem, removeItem, segmentTimings, formatMinutes, qaStatus, QA_STATUS_LABELS, markQaSent,
@@ -104,7 +104,7 @@ function download(filename, text, type = 'application/json') {
 /* State                                                             */
 /* ---------------------------------------------------------------- */
 
-let state = loadState();
+let state = ensureGuestTokens(loadState());
 let storageWarned = false;
 // Read key, last check time and imported submission ids: kept apart from the
 // main data, never exported and never put in a link.
@@ -124,7 +124,7 @@ const ui = {
 };
 
 function commit(next, { main = true } = {}) {
-  state = next;
+  state = ensureGuestTokens(next);
   if (!saveState(state) && !storageWarned && !unreadableData()) {
     storageWarned = true;
     toast('Browser storage is unavailable, so changes will be lost when you close this tab. Use Export to keep a copy.');
@@ -200,7 +200,11 @@ function setView(route, { focus = false } = {}) {
   // Routes: "#pipeline", "#calendar", … and "#plan/<guest id>".
   let [view, arg] = String(route || '').split('/');
   if (view === 'plan') {
-    ui.planGuestId = decodeURIComponent(arg || '');
+    try {
+      ui.planGuestId = decodeURIComponent(arg || '');
+    } catch {
+      ui.planGuestId = ''; // a malformed link like #plan/%E0 falls back to the pipeline
+    }
     if (!findGuest(ui.planGuestId)) view = 'pipeline';
     else if (ui.selectedId) closePanel({ restore: false }); // the plan needs the room
   }
@@ -391,6 +395,25 @@ function fieldControl(g, f) {
 }
 
 /**
+ * Submissions that matched this guest only by email or id. Anyone who knows
+ * an email address could have sent them, so the host decides.
+ */
+function pendingSection(g) {
+  if (!g.pending.length) return null;
+  return h('section', { class: 'panel-section pending', 'aria-labelledby': 'h-pending' },
+    h('h3', { class: 'section-label', id: 'h-pending' }, `Needs review (${g.pending.length})`),
+    h('p', { class: 'hint', style: { margin: 0, fontSize: '13px' } }, 'These came in without this guest’s personal link, so they only match by email or id. Accept to merge them, or discard them.'),
+    h('ul', { class: 'range-book' }, g.pending.map((p, i) => h('li', null,
+      h('span', { class: 'range-label', id: `pend-${i}` }, describePending(p)),
+      h('div', { class: 'range-actions' },
+        h('button', { type: 'button', class: 'btn btn-outline btn-sm', dataset: { action: 'accept-pending', sub: p.id }, 'aria-describedby': `pend-${i}` }, 'Accept'),
+        h('button', { type: 'button', class: 'btn btn-quiet btn-sm', dataset: { action: 'discard-pending', sub: p.id }, 'aria-describedby': `pend-${i}` }, 'Discard')
+      )
+    )))
+  );
+}
+
+/**
  * Times the guest marked on the availability calendar, merged into ranges.
  * Each range can be booked at any of its half-hour starts.
  */
@@ -482,6 +505,8 @@ function renderPanel() {
           ? h('p', { class: 'panel-note' }, 'Headshot: ', h('a', { href: safeHttpUrl(g.headshot), target: '_blank', rel: 'noopener noreferrer' }, 'Open photo ↗'))
           : g.headshot ? h('p', { class: 'panel-note hint' }, `Headshot file named “${g.headshot}” (not uploaded).`) : null
       ),
+
+      pendingSection(g),
 
       freeTimesSection(g),
 
@@ -715,6 +740,13 @@ function initPanel() {
     }
   });
 
+  panel.addEventListener('click', (e) => {
+    // Sending the Pre-interview questions template from the panel counts as sending the Q&A.
+    if (e.target.closest('#panel-mailto') && ui.panelTemplateId === 'qa') {
+      const g = findGuest(ui.selectedId);
+      if (g) prepareQa(g);
+    }
+  });
   panel.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
@@ -738,6 +770,14 @@ function initPanel() {
       closePanel({ restore: false });
       $('#view-title').focus();
       toast(`Deleted ${displayName(g)}.`);
+    } else if (action === 'accept-pending' || action === 'discard-pending') {
+      const updated = action === 'accept-pending'
+        ? acceptPending(g, btn.dataset.sub, { nowIso: nowIso(), hostTimeZone: tz() })
+        : discardPending(g, btn.dataset.sub);
+      saveGuest(updated);
+      renderPanel();
+      ($('[data-action="accept-pending"]', panel) || $('#panel-name')).focus();
+      toast(action === 'accept-pending' ? 'Merged into this guest.' : 'Discarded.');
     } else if (action === 'book-range') {
       const sel = $(`#free-${btn.dataset.range}-start`);
       const slot = sel ? sel.value : btn.dataset.first;
@@ -1108,6 +1148,19 @@ function qaUrl(g) {
   return { url: buildIntakeUrl(pageUrl('qa.html'), state.settings, { slots: false, guest: g, extra: { qs: enc.param } }), dropped: enc.dropped };
 }
 
+/**
+ * Save the guest's questions (seeded from the bank) before any Q&A link is
+ * built, so the link's question ids are the saved ones. Doesn't mark it sent.
+ */
+function ensureQaQuestions(g) {
+  if (normalizeQa(g.qa).questions.length || !state.settings.questionBank.length) return g;
+  const qa = { ...normalizeQa(g.qa), questions: seedQuestions(state.settings.questionBank) };
+  const updated = { ...g, qa };
+  state = upsertGuest(state, updated);
+  saveState(state);
+  return updated;
+}
+
 /** Make sure the guest's questions are saved before a link goes out, and stamp "sent". */
 function prepareQa(g) {
   const updated = markQaSent(g, state.settings.questionBank, nowIso());
@@ -1169,7 +1222,8 @@ function renderPlan() {
   if (!g) return;
   const plan = normalizePlan(g.plan);
   const qa = normalizeQa(g.qa);
-  const t = segmentTimings(plan.segments);
+  // Same rule as the run sheet: blank talking points don't count toward the total.
+  const t = segmentTimings(plan.segments.filter((x) => x.text.trim()));
   const status = qaStatus(g);
   const link = qaUrl(g);
   const title = h('input', { id: 'plan-title', type: 'text', dataset: { planField: 'title' }, autocomplete: 'off', placeholder: `Episode with ${displayName(g)}` });
@@ -1405,7 +1459,7 @@ function availabilityUrl(g) {
 /** Per-guest links used by the {{availability_link}} and {{qa_link}} placeholders. */
 function guestLinks(g) {
   const links = { availabilityLink: availabilityUrl(g) };
-  if (typeof qaUrl === 'function') links.qaLink = qaUrl(g).url;
+  links.qaLink = qaUrl(ensureQaQuestions(g)).url;
   return links;
 }
 
@@ -1493,7 +1547,9 @@ function renderSettings() {
 /* Intake backend (Google Apps Script)                               */
 /* ---------------------------------------------------------------- */
 
-const backendReady = () => !!(state.settings.intakeEndpoint && sync.readKey);
+// The read key is only sent to the endpoint it was entered for (see keyUsable).
+const backendReady = () => keyUsable(sync, state.settings.intakeEndpoint);
+const keyNeedsReentry = () => !!(sync.readKey && state.settings.intakeEndpoint && !backendReady());
 
 function lastCheckedText() {
   if (!sync.lastSync) return 'Not checked yet.';
@@ -1512,7 +1568,7 @@ function backendSection() {
     h('p', null, 'Connect a free Google Apps Script web app so guests’ intake answers, availability and Q&A reach you from their own devices. The README has step-by-step setup.'),
     h('div', { class: 'field-grid' },
       h('label', { class: 'field span-2' }, 'Intake endpoint URL',
-        h('span', { class: 'hint', id: 'endpoint-help' }, 'The web app URL from Deploy → Web app. Share links include it so guests’ answers are posted to your sheet, and only there. It can’t read anything.'),
+        h('span', { class: 'hint', id: 'endpoint-help' }, 'The web app URL from Deploy → Web app (https://script.google.com/macros/s/…/exec; other addresses aren’t accepted). Share links include it so guests’ answers are posted to your sheet. It can’t read anything.'),
         endpoint,
         h('span', { class: 'field-error', id: 'endpoint-warn', hidden: true })
       ),
@@ -1555,7 +1611,7 @@ let checking = false;
 async function checkSubmissions({ quiet = false } = {}) {
   if (checking) return;
   if (!backendReady()) {
-    setBackendStatus('Add the endpoint URL and read key first.');
+    setBackendStatus(keyNeedsReentry() ? 'The read key was entered for a different endpoint. Paste it again in Settings.' : 'Add the endpoint URL and read key first.');
     if (!quiet) toast('Set up the intake backend in Settings first.');
     return;
   }
@@ -1599,8 +1655,8 @@ async function testBackend() {
   setBackendStatus('Testing the connection…');
   try {
     await checkHealth(url);
-    if (!sync.readKey) {
-      setBackendStatus('Connected. Now paste the read key to import submissions.');
+    if (!keyUsable(sync, url)) {
+      setBackendStatus(sync.readKey ? 'Connected. Paste the read key for this endpoint to import submissions.' : 'Connected. Now paste the read key to import submissions.');
       return;
     }
     const res = await fetchSubmissions(url, sync.readKey, new Date().toISOString());
@@ -1645,14 +1701,21 @@ function initSettings() {
       else e.target.removeAttribute('aria-invalid');
       if (!bad) {
         updateSettings({ intakeEndpoint: url });
+        // A key typed before any endpoint belongs to the first one the host enters here.
+        if (sync.readKey && !sync.keyEndpoint && url) {
+          sync = { ...sync, keyEndpoint: url };
+          saveSync(sync);
+        }
         syncHeadCheck();
+        if (keyNeedsReentry()) setBackendStatus('The endpoint changed. Paste the read key again for this endpoint before checking.');
       }
     } else if (e.target.id === 'set-bank') {
       const bank = normalizeQuestionBank(e.target.value.split('\n'));
       updateSettings({ questionBank: bank });
       $('#bank-count').textContent = `${bank.length} question${bank.length === 1 ? '' : 's'}${e.target.value.split('\n').filter((l) => l.trim()).length > bank.length ? ` (only the first ${QA_LIMITS.questions} are used)` : ''}`;
     } else if (e.target.id === 'set-readkey') {
-      sync = { ...sync, readKey: e.target.value.trim() };
+      // Remember which endpoint this key belongs to; it is never sent anywhere else.
+      sync = { ...sync, readKey: e.target.value.trim(), keyEndpoint: normalizeEndpoint(state.settings.intakeEndpoint) };
       saveSync(sync);
       syncHeadCheck();
     }
@@ -1742,6 +1805,13 @@ function initSettings() {
     try {
       const next = parseState(await file.text(), { timeZone: browserTimeZone() });
       if (!window.confirm(`Replace everything in this browser with the backup “${file.name}” (${next.guests.length} guests)?`)) return;
+      // A backup can't silently change where the app talks to (and sends the read key).
+      const current = state.settings.intakeEndpoint;
+      const incoming = next.settings.intakeEndpoint;
+      if (incoming !== current) {
+        const useIt = incoming && window.confirm(`The backup uses a different intake endpoint on ${endpointHost(incoming)}:\n${incoming}\n\nUse it? Choose Cancel to keep your current endpoint${current ? ` (${endpointHost(current)})` : ''}. If you use it, you’ll need to paste its read key again.`);
+        if (!useIt) next.settings = { ...next.settings, intakeEndpoint: current };
+      }
       if (ui.selectedId) closePanel({ restore: false });
       commit(next);
       setView(ui.view);

@@ -2,6 +2,7 @@
 // Q&A): toasts, copying, the "send to the show" status, and client-side
 // photo resizing. Text is only ever set with textContent.
 import { fitWithin, parseDataUrl, LIMITS } from './remote.js';
+import { endpointHost } from './logic.js';
 
 export const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -90,4 +91,10 @@ export async function resizeHeadshot(file, { max = 1000, maxBytes = LIMITS.heads
     }
   }
   throw new Error('This photo is too large even after resizing.');
+}
+
+/** Tell the guest where "Send" goes: the host name of the web app from the link. */
+export function deliveryNote(what, showName, endpoint) {
+  const host = endpointHost(endpoint);
+  return `${what} will be sent to a Google Apps Script web app at ${host}, which ${showName} uses to collect them in its Google Sheet.`;
 }

@@ -9,7 +9,7 @@ import {
 import { inspectStoredState, loadStoredState, saveState, browserTimeZone } from './store.js';
 import { buildIntakePayload, validatePayload, HONEYPOT_FIELD } from './remote.js';
 import { postSubmission } from './api.js';
-import { $, toast, copyTextarea, setBusy, setStatus, resizeHeadshot } from './guest-page.js';
+import { $, toast, copyTextarea, setBusy, setStatus, resizeHeadshot, deliveryNote } from './guest-page.js';
 
 const stored = loadStoredState();
 const params = readIntakeParams(window.location.search);
@@ -40,7 +40,7 @@ let sending = false;
 function renderStatic() {
   if (fromShare) $('.back-link').hidden = true;
   if (settings.endpoint) {
-    $('#delivery-note').textContent = `Your answers go straight to ${settings.showName}’s own Google Sheet. Nobody else receives them.`;
+    $('#delivery-note').textContent = deliveryNote('Your answers', settings.showName, settings.endpoint);
     $('#headshot-help').textContent = 'Square, at least 1000 px. Used for episode art and social posts. It’s resized in your browser and sent with your answers.';
   }
   $('#hp-field input').name = HONEYPOT_FIELD;
@@ -203,7 +203,7 @@ async function send(a) {
       photoNote = ` Your photo couldn’t be attached (${err.message}), so please email it to the show.`;
     }
   }
-  const payload = buildIntakePayload(a, { showName: settings.showName, timeZone: settings.timeZone, headshot, honeypot: form.elements[HONEYPOT_FIELD]?.value });
+  const payload = buildIntakePayload(a, { showName: settings.showName, timeZone: settings.timeZone, headshot, honeypot: form.elements[HONEYPOT_FIELD]?.value, token: params.guestToken });
   const invalid = validatePayload(payload);
   if (invalid) return invalid;
   setStatus(status, 'Sending your answers to the show…');
