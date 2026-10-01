@@ -1,0 +1,267 @@
+<title>Momentum</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+  :root{
+    --bg:#F3F5F7; --surface:#FFFFFF; --surface-2:#EAEEF3; --ink:#16202B; --muted:#5B6B7A;
+    --accent:#4854D6; --accent-soft:#E8E9FB; --accent-ink:#2C348F;
+    --line:#D9DFE6; --now:#E0791F; --now-soft:#FBE9D8;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#10141C; --surface:#161C27; --surface-2:#1D2430; --ink:#E8ECF2; --muted:#8B97A6;
+      --accent:#7C87F0; --accent-soft:#232A44; --accent-ink:#C3C9FA;
+      --line:#2A3240; --now:#F0A059; --now-soft:#3A2A18;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#10141C; --surface:#161C27; --surface-2:#1D2430; --ink:#E8ECF2; --muted:#8B97A6;
+    --accent:#7C87F0; --accent-soft:#232A44; --accent-ink:#C3C9FA;
+    --line:#2A3240; --now:#F0A059; --now-soft:#3A2A18;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--bg); color:var(--ink); font-family:"IBM Plex Sans",system-ui,sans-serif; padding:24px 20px 48px;}
+  .wrap{max-width:760px; margin:0 auto; display:flex; flex-direction:column; gap:28px;}
+  .top{display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap;}
+  .brand{font-family:"Fraunces",serif; font-weight:600; font-size:1.4rem; letter-spacing:-0.01em;}
+  .date{color:var(--muted); font-size:0.85rem;}
+  .clockrow{display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px 16px;}
+  .clockrow input[type=range]{flex:1; accent-color:var(--accent);}
+  .clocklabel{font-family:"IBM Plex Mono",monospace; font-size:0.95rem; min-width:64px; text-align:right; font-variant-numeric:tabular-nums;}
+  .hint{color:var(--muted); font-size:0.78rem;}
+
+  .now-card{background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:24px; position:relative; overflow:hidden;}
+  .now-card::before{content:""; position:absolute; inset:0 0 auto 0; height:4px; background:var(--now);}
+  .now-eyebrow{text-transform:uppercase; font-size:0.72rem; letter-spacing:0.08em; color:var(--now); font-weight:600; margin-bottom:8px;}
+  .now-title{font-family:"Fraunces",serif; font-weight:600; font-size:1.7rem; text-wrap:balance; margin-bottom:6px;}
+  .now-why{color:var(--muted); font-size:0.92rem; line-height:1.5; max-width:60ch;}
+  .now-meta{display:flex; gap:16px; margin-top:14px; font-size:0.82rem; color:var(--muted); flex-wrap:wrap;}
+  .now-meta b{color:var(--ink); font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;}
+
+  h2.section{font-family:"Fraunces",serif; font-weight:600; font-size:1.05rem; margin:0 0 12px;}
+
+  .timeline{background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:18px; overflow-x:auto;}
+  .rail{position:relative; display:flex; gap:10px; min-width:640px; padding-top:8px;}
+  .block{flex:1; min-width:70px; border-radius:10px; padding:10px 8px; background:var(--surface-2); border:1px solid var(--line); position:relative;}
+  .block.active{background:var(--now-soft); border-color:var(--now);}
+  .block.past{opacity:0.5;}
+  .block .t{font-family:"IBM Plex Mono",monospace; font-size:0.68rem; color:var(--muted); font-variant-numeric:tabular-nums;}
+  .block .n{font-size:0.78rem; font-weight:600; margin-top:4px; line-height:1.25;}
+  .prio{display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:4px; vertical-align:middle;}
+  .prio.high{background:#D64545;} .prio.med{background:#E0A62E;} .prio.low{background:#5FA679;}
+
+  .list{display:flex; flex-direction:column; gap:10px;}
+  .row{display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px;}
+  .row .time{font-family:"IBM Plex Mono",monospace; font-size:0.78rem; color:var(--muted); min-width:48px; font-variant-numeric:tabular-nums;}
+  .row .name{flex:1; font-size:0.92rem; font-weight:500;}
+  .row .why{font-size:0.76rem; color:var(--muted); margin-top:2px;}
+  .tag{font-size:0.68rem; text-transform:uppercase; letter-spacing:0.05em; padding:3px 8px; border-radius:999px; background:var(--accent-soft); color:var(--accent-ink); font-weight:600;}
+  .minibtn{font:inherit; font-size:0.7rem; font-weight:600; padding:5px 9px; border-radius:7px; border:1px solid var(--line); background:var(--bg); color:var(--muted); cursor:pointer;}
+  .minibtn:hover{border-color:var(--accent); color:var(--accent);}
+  .conflict{font-size:0.68rem; color:#B5432E; font-weight:600; margin-top:2px;}
+
+  form.add{background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:16px; display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;}
+  .field{display:flex; flex-direction:column; gap:4px; font-size:0.75rem; color:var(--muted);}
+  .field input, .field select{font:inherit; font-size:0.85rem; padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink);}
+  .field.title{flex:1; min-width:160px;}
+  button{font:inherit; font-size:0.85rem; font-weight:600; padding:9px 16px; border-radius:8px; border:none; background:var(--accent); color:#fff; cursor:pointer;}
+  button:hover{filter:brightness(1.06);}
+  button:focus-visible, input:focus-visible, select:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div class="brand">Momentum</div>
+    <div class="date" id="dateLabel"></div>
+  </div>
+
+  <div class="clockrow">
+    <span class="hint">Simulate time</span>
+    <input type="range" id="clock" min="0" max="1439" value="600">
+    <span class="clocklabel" id="clockLabel">10:00</span>
+  </div>
+
+  <section>
+    <div class="now-card">
+      <div class="now-eyebrow" id="nowEyebrow">Right now</div>
+      <div class="now-title" id="nowTitle">—</div>
+      <div class="now-why" id="nowWhy">—</div>
+      <div class="now-meta">
+        <span>Until <b id="nowUntil">—</b></span>
+        <span>Then <b id="nowThen">—</b></span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section">Today</h2>
+    <div class="timeline"><div class="rail" id="rail"></div></div>
+  </section>
+
+  <section>
+    <h2 class="section">This week</h2>
+    <div class="list" id="weekList"></div>
+  </section>
+
+  <section>
+    <h2 class="section">Add a commitment</h2>
+    <form class="add" id="addForm">
+      <div class="field title"><label>What</label><input id="fTitle" placeholder="e.g. Prep board deck" required></div>
+      <div class="field"><label>Start</label><input id="fStart" type="time" value="14:00" required></div>
+      <div class="field"><label>End</label><input id="fEnd" type="time" value="15:00" required></div>
+      <div class="field"><label>Priority</label>
+        <select id="fPrio"><option value="high">High</option><option value="med" selected>Medium</option><option value="low">Low</option></select>
+      </div>
+      <button type="submit">Add to today</button>
+    </form>
+  </section>
+</div>
+
+<script>
+(function(){
+  var STORAGE_KEY = "momentum.blocks.v1";
+  var todayLabel = new Date().toLocaleDateString(undefined,{weekday:'long', month:'long', day:'numeric'});
+  document.getElementById('dateLabel').textContent = todayLabel;
+
+  var seed = [
+    {id:1, title:"Deep work: quarterly roadmap", start:540, end:660, prio:"high", why:"Blocked twice this week already — your longest open focus window."},
+    {id:2, title:"Standup", start:660, end:675, prio:"low", why:"Recurring, short."},
+    {id:3, title:"1:1 with Priya", start:690, end:750, prio:"med", why:"She flagged a blocker yesterday."},
+    {id:4, title:"Review design PR", start:780, end:840, prio:"med", why:"Due before tomorrow's release cut."},
+    {id:5, title:"Lunch", start:840, end:900, prio:"low", why:""},
+    {id:6, title:"Client call: renewal risk", start:900, end:960, prio:"high", why:"Account flagged at-risk; prep notes ready."},
+    {id:7, title:"Inbox + admin", start:960, end:1020, prio:"low", why:""},
+    {id:8, title:"Draft board deck narrative", start:1020, end:1110, prio:"high", why:"Same thread as this morning — keep momentum."},
+    {id:9, title:"Wrap up + tomorrow plan", start:1110, end:1140, prio:"low", why:""}
+  ];
+
+  function load(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(raw) return JSON.parse(raw);
+    }catch(e){}
+    return seed;
+  }
+  function save(blocks){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(blocks)); }catch(e){}
+  }
+
+  var blocks = load().sort(function(a,b){return a.start-b.start;});
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function fmt(min){
+    var h = Math.floor(min/60), m = min%60;
+    var ap = h>=12 ? 'PM':'AM';
+    var hh = h%12; if(hh===0) hh=12;
+    return hh + ':' + (m<10?'0':'')+m + ' ' + ap;
+  }
+
+  function render(nowMin){
+    document.getElementById('clockLabel').textContent = fmt(nowMin);
+
+    var current=null, next=null;
+    for(var i=0;i<blocks.length;i++){
+      var b=blocks[i];
+      if(nowMin>=b.start && nowMin<b.end){ current=b; next=blocks[i+1]||null; }
+    }
+    if(!current){
+      for(var j=0;j<blocks.length;j++){ if(blocks[j].start>nowMin){ next=blocks[j]; break; } }
+    }
+
+    var eyebrow = document.getElementById('nowEyebrow');
+    var title = document.getElementById('nowTitle');
+    var why = document.getElementById('nowWhy');
+    var until = document.getElementById('nowUntil');
+    var then = document.getElementById('nowThen');
+
+    if(current){
+      eyebrow.textContent = "Right now · " + current.prio.toUpperCase() + " priority";
+      title.textContent = current.title;
+      why.textContent = current.why || "No conflicts, no dependencies waiting on you.";
+      until.textContent = fmt(current.end);
+      then.textContent = next ? next.title : "Nothing scheduled";
+    } else if(next){
+      eyebrow.textContent = "Coming up";
+      title.textContent = next.title;
+      why.textContent = "Open block until then — good time for anything that doesn't need a room.";
+      until.textContent = fmt(next.start);
+      then.textContent = next.title;
+    } else {
+      eyebrow.textContent = "Right now";
+      title.textContent = "Day's clear";
+      why.textContent = "Nothing left on today's list.";
+      until.textContent = "—";
+      then.textContent = "—";
+    }
+
+    var rail = document.getElementById('rail');
+    rail.innerHTML = '';
+    blocks.forEach(function(b){
+      var el = document.createElement('div');
+      el.className = 'block' + (nowMin>=b.start && nowMin<b.end ? ' active' : (b.end<=nowMin ? ' past' : ''));
+      el.innerHTML = '<div class="t">'+fmt(b.start)+'</div><div class="n"><span class="prio '+b.prio+'"></span>'+escapeHtml(b.title)+'</div>';
+      rail.appendChild(el);
+    });
+
+    var weekList = document.getElementById('weekList');
+    weekList.innerHTML='';
+    var upcoming = blocks.filter(function(b){return b.end>nowMin;}).slice(0,5);
+    if(upcoming.length===0){
+      weekList.innerHTML = '<div class="row"><span class="name why">Nothing left today.</span></div>';
+    }
+    upcoming.forEach(function(b){
+      var overlap = blocks.some(function(o){ return o.id!==b.id && o.start<b.end && o.end>b.start; });
+      var row=document.createElement('div');
+      row.className='row';
+      row.innerHTML = '<span class="time">'+fmt(b.start)+'</span>'+
+        '<span class="name">'+escapeHtml(b.title)+(b.why?'<div class="why">'+escapeHtml(b.why)+'</div>':'')+(overlap?'<div class="conflict">Overlaps another block</div>':'')+'</span>'+
+        '<span class="tag">'+b.prio+'</span>'+
+        '<button class="minibtn" data-act="done" data-id="'+b.id+'">Done</button>'+
+        '<button class="minibtn" data-act="del" data-id="'+b.id+'">Remove</button>';
+      weekList.appendChild(row);
+    });
+    weekList.querySelectorAll('button[data-act]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = parseInt(btn.getAttribute('data-id'),10);
+        blocks = blocks.filter(function(b){ return b.id!==id; });
+        save(blocks);
+        render(parseInt(clock.value,10));
+      });
+    });
+  }
+
+  var clock = document.getElementById('clock');
+  clock.addEventListener('input', function(){ render(parseInt(clock.value,10)); });
+
+  document.getElementById('addForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var s = document.getElementById('fStart').value.split(':');
+    var en = document.getElementById('fEnd').value.split(':');
+    var startMin = parseInt(s[0],10)*60+parseInt(s[1],10);
+    var endMin = parseInt(en[0],10)*60+parseInt(en[1],10);
+    if(endMin<=startMin){ endMin = startMin+30; }
+    blocks.push({
+      id: Date.now(),
+      title: document.getElementById('fTitle').value.trim() || "Untitled",
+      start:startMin, end:endMin,
+      prio: document.getElementById('fPrio').value,
+      why: "Added just now."
+    });
+    blocks.sort(function(a,b){return a.start-b.start;});
+    save(blocks);
+    document.getElementById('fTitle').value='';
+    render(parseInt(clock.value,10));
+  });
+
+  var initMin = new Date().getHours()*60 + new Date().getMinutes();
+  clock.value = initMin;
+  render(initMin);
+})();
+</script>

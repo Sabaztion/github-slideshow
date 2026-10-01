@@ -1,0 +1,269 @@
+<title>Keystone</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=Source+Sans+3:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+  :root{
+    --bg:#EEF0EC; --surface:#FFFFFF; --surface-2:#E2E6DD; --ink:#1F2A22; --muted:#5D6B60;
+    --accent:#8A6D3B; --accent-soft:#F0E6D2; --accent-ink:#5C4820;
+    --line:#D7DCD1; --ok:#4B6350; --soon:#C08A2E; --overdue:#B5432E; --overdue-soft:#F6DFD8;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#141712; --surface:#1B2019; --surface-2:#212820; --ink:#E7ECE4; --muted:#98A192;
+      --accent:#C9A968; --accent-soft:#332A18; --accent-ink:#E4CE9A;
+      --line:#2B3126; --ok:#7FA084; --soon:#D9A94A; --overdue:#DD7863; --overdue-soft:#3A241E;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#141712; --surface:#1B2019; --surface-2:#212820; --ink:#E7ECE4; --muted:#98A192;
+    --accent:#C9A968; --accent-soft:#332A18; --accent-ink:#E4CE9A;
+    --line:#2B3126; --ok:#7FA084; --soon:#D9A94A; --overdue:#DD7863; --overdue-soft:#3A241E;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--bg); color:var(--ink); font-family:"Source Sans 3",system-ui,sans-serif; padding:24px 20px 48px;}
+  .wrap{max-width:880px; margin:0 auto; display:flex; flex-direction:column; gap:30px;}
+  .top{display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px;}
+  .brand{font-family:"Newsreader",serif; font-weight:600; font-size:1.5rem;}
+  .addr{color:var(--muted); font-size:0.82rem;}
+
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px;}
+  .stat{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px;}
+  .stat .n{font-family:"IBM Plex Mono",monospace; font-size:1.6rem; font-variant-numeric:tabular-nums;}
+  .stat .l{font-size:0.75rem; color:var(--muted); margin-top:2px;}
+
+  h2.section{font-family:"Newsreader",serif; font-weight:600; font-size:1.1rem; margin:0 0 12px; display:flex; align-items:center; gap:8px;}
+  .count{font-family:"Source Sans 3"; font-size:0.72rem; font-weight:600; color:var(--muted); background:var(--surface-2); padding:2px 8px; border-radius:999px;}
+
+  .tasklist{display:flex; flex-direction:column; gap:8px;}
+  .task{display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px;}
+  .task .badge{font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; padding:4px 8px; border-radius:6px; white-space:nowrap;}
+  .badge.overdue{background:var(--overdue-soft); color:var(--overdue);}
+  .badge.soon{background:var(--accent-soft); color:var(--soon);}
+  .badge.ok{background:var(--surface-2); color:var(--ok);}
+  .task .name{flex:1; font-weight:500; font-size:0.92rem;}
+  .task .sub{font-size:0.76rem; color:var(--muted); margin-top:2px;}
+  .task .due{font-family:"IBM Plex Mono",monospace; font-size:0.78rem; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap;}
+  .task button.done{border:1px solid var(--line); background:transparent; color:var(--muted); border-radius:8px; padding:6px 10px; font-size:0.72rem; cursor:pointer; font-family:inherit;}
+  .task button.done:hover{border-color:var(--ok); color:var(--ok);}
+
+  .assets{display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:14px;}
+  .asset{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px; display:flex; flex-direction:column; gap:6px;}
+  .asset .name{font-weight:600; font-size:0.95rem;}
+  .asset .row{display:flex; justify-content:space-between; font-size:0.78rem; color:var(--muted);}
+  .asset .row b{color:var(--ink); font-family:"IBM Plex Mono",monospace; font-weight:500; font-variant-numeric:tabular-nums;}
+  .asset .warranty{margin-top:4px; font-size:0.72rem; padding:4px 8px; border-radius:6px; display:inline-block; width:fit-content;}
+  .warranty.active{background:var(--accent-soft); color:var(--accent-ink);}
+  .warranty.expired{background:var(--overdue-soft); color:var(--overdue);}
+  .asset .actions{display:flex; gap:6px; margin-top:8px;}
+  .minibtn{font:inherit; font-size:0.72rem; font-weight:600; padding:6px 10px; border-radius:7px; border:1px solid var(--line); background:var(--bg); color:var(--muted); cursor:pointer;}
+  .minibtn:hover{border-color:var(--accent); color:var(--accent-ink);}
+  .filters{display:flex; gap:8px; flex-wrap:wrap;}
+  .filter{font:inherit; font-size:0.78rem; font-weight:600; padding:7px 13px; border-radius:999px; border:1px solid var(--line); background:var(--surface); color:var(--muted); cursor:pointer;}
+  .filter.active{background:var(--accent); color:#221a0c; border-color:var(--accent);}
+
+  form.add{background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:16px; display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;}
+  .field{display:flex; flex-direction:column; gap:4px; font-size:0.75rem; color:var(--muted);}
+  .field input{font:inherit; font-size:0.85rem; padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink);}
+  .field.title{flex:1; min-width:160px;}
+  button[type=submit]{font:inherit; font-size:0.85rem; font-weight:600; padding:9px 16px; border-radius:8px; border:none; background:var(--accent); color:#221a0c; cursor:pointer;}
+  button:focus-visible, input:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div class="brand">Keystone</div>
+    <div class="addr">142 Alder Street</div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <section>
+    <h2 class="section">Upcoming <span class="count" id="taskCount"></span></h2>
+    <div class="tasklist" id="taskList"></div>
+  </section>
+
+  <section>
+    <h2 class="section">Home systems <span class="count" id="assetCount"></span></h2>
+    <div class="filters" id="filters" style="margin-bottom:12px;"></div>
+    <div class="assets" id="assets"></div>
+  </section>
+
+  <section>
+    <h2 class="section">Add a system or appliance</h2>
+    <form class="add" id="addForm">
+      <div class="field title"><label>Name</label><input id="fName" placeholder="e.g. Dishwasher" required></div>
+      <div class="field"><label>Category</label>
+        <select id="fCategory"><option>Appliance</option><option>HVAC</option><option>Structure</option><option>Vehicle</option><option>Other</option></select>
+      </div>
+      <div class="field"><label>Installed</label><input id="fInstalled" type="date" required></div>
+      <div class="field"><label>Warranty ends</label><input id="fWarranty" type="date"></div>
+      <div class="field"><label>Next service due</label><input id="fService" type="date"></div>
+      <button type="submit">Add</button>
+    </form>
+  </section>
+</div>
+
+<script>
+(function(){
+  var STORAGE_KEY = "keystone.assets.v1";
+  var DAY = 86400000;
+  var today = new Date(); today.setHours(0,0,0,0);
+
+  function iso(d){ return d.toISOString().slice(0,10); }
+  function addDays(n){ return iso(new Date(today.getTime()+n*DAY)); }
+
+  var seed = [
+    {id:1, name:"HVAC system", category:"HVAC", installed:addDays(-900), warranty:addDays(-170), service:addDays(9), docs:3},
+    {id:2, name:"Roof (asphalt shingle)", category:"Structure", installed:addDays(-2400), warranty:addDays(2200), service:addDays(210), docs:2},
+    {id:3, name:"Water heater", category:"Appliance", installed:addDays(-300), warranty:addDays(1400), service:addDays(-4), docs:1},
+    {id:4, name:"Refrigerator", category:"Appliance", installed:addDays(-620), warranty:addDays(110), service:addDays(140), docs:2},
+    {id:5, name:"Car — 2021 sedan", category:"Vehicle", installed:addDays(-1100), warranty:addDays(-30), service:addDays(35), docs:4}
+  ];
+  var activeFilter = "All";
+
+  function load(){
+    try{ var raw = localStorage.getItem(STORAGE_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+    return seed;
+  }
+  function save(a){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(a)); }catch(e){} }
+
+  var assets = load();
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function daysUntil(dateStr){
+    if(!dateStr) return null;
+    var d = new Date(dateStr+"T00:00:00");
+    return Math.round((d-today)/DAY);
+  }
+  function fmtDate(dateStr){
+    if(!dateStr) return "—";
+    var d = new Date(dateStr+"T00:00:00");
+    return d.toLocaleDateString(undefined,{month:'short', day:'numeric', year:'numeric'});
+  }
+  function fmtRel(days){
+    if(days===null) return "—";
+    if(days<0) return Math.abs(days)+"d overdue";
+    if(days===0) return "today";
+    return "in "+days+"d";
+  }
+
+  function render(){
+    var stats = document.getElementById('stats');
+    var overdueCount = assets.filter(function(a){ var d=daysUntil(a.service); return d!==null && d<0; }).length;
+    var soonCount = assets.filter(function(a){ var d=daysUntil(a.service); return d!==null && d>=0 && d<=30; }).length;
+    var warrantyActive = assets.filter(function(a){ var d=daysUntil(a.warranty); return d!==null && d>=0; }).length;
+    stats.innerHTML =
+      '<div class="stat"><div class="n" style="color:var(--overdue)">'+overdueCount+'</div><div class="l">Overdue</div></div>'+
+      '<div class="stat"><div class="n" style="color:var(--soon)">'+soonCount+'</div><div class="l">Due within 30 days</div></div>'+
+      '<div class="stat"><div class="n">'+warrantyActive+'</div><div class="l">Under warranty</div></div>'+
+      '<div class="stat"><div class="n">'+assets.reduce(function(s,a){return s+(a.docs||0);},0)+'</div><div class="l">Documents on file</div></div>';
+
+    var tasks = assets
+      .filter(function(a){ return a.service; })
+      .map(function(a){ return {name:a.name, due:a.service, days:daysUntil(a.service)}; })
+      .sort(function(a,b){ return a.days-b.days; });
+
+    document.getElementById('taskCount').textContent = tasks.length;
+    var taskList = document.getElementById('taskList');
+    taskList.innerHTML = '';
+    tasks.forEach(function(t){
+      var cls = t.days<0 ? 'overdue' : (t.days<=30 ? 'soon' : 'ok');
+      var label = t.days<0 ? 'Overdue' : (t.days<=30 ? 'Due soon' : 'Scheduled');
+      var row = document.createElement('div');
+      row.className='task';
+      row.innerHTML =
+        '<span class="badge '+cls+'">'+label+'</span>'+
+        '<span class="name">'+escapeHtml(t.name)+'<div class="sub">Service due '+fmtDate(t.due)+'</div></span>'+
+        '<span class="due">'+fmtRel(t.days)+'</span>';
+      taskList.appendChild(row);
+    });
+    if(tasks.length===0){
+      taskList.innerHTML = '<div class="task"><span class="name">Nothing scheduled.</span></div>';
+    }
+
+    document.getElementById('assetCount').textContent = assets.length;
+
+    var cats = ["All"].concat(assets.reduce(function(list,a){
+      if(a.category && list.indexOf(a.category)<0) list.push(a.category);
+      return list;
+    },[]));
+    var filterBox = document.getElementById('filters');
+    filterBox.innerHTML = '';
+    cats.forEach(function(c){
+      var btn = document.createElement('button');
+      btn.className = 'filter' + (c===activeFilter?' active':'');
+      btn.textContent = c;
+      btn.addEventListener('click', function(){ activeFilter = c; render(); });
+      filterBox.appendChild(btn);
+    });
+
+    var box = document.getElementById('assets');
+    box.innerHTML = '';
+    var visible = assets.filter(function(a){ return activeFilter==="All" || a.category===activeFilter; });
+    visible.forEach(function(a){
+      var wDays = daysUntil(a.warranty);
+      var wActive = wDays!==null && wDays>=0;
+      var el = document.createElement('div');
+      el.className='asset';
+      el.innerHTML =
+        '<div class="name">'+escapeHtml(a.name)+'</div>'+
+        '<div class="row"><span>Installed</span><b>'+fmtDate(a.installed)+'</b></div>'+
+        '<div class="row"><span>Next service</span><b>'+fmtDate(a.service)+'</b></div>'+
+        '<div class="row"><span>Documents</span><b>'+(a.docs||0)+'</b></div>'+
+        '<span class="warranty '+(wActive?'active':'expired')+'">'+
+          (a.warranty ? (wActive ? 'Warranty until '+fmtDate(a.warranty) : 'Warranty expired '+fmtDate(a.warranty)) : 'No warranty on file')+
+        '</span>'+
+        '<div class="actions">'+
+          '<button class="minibtn" data-act="service" data-id="'+a.id+'">Log service</button>'+
+          '<button class="minibtn" data-act="remove" data-id="'+a.id+'">Remove</button>'+
+        '</div>';
+      box.appendChild(el);
+    });
+    if(visible.length===0){
+      box.innerHTML = '<div class="asset">No systems in this category yet.</div>';
+    }
+    box.querySelectorAll('button[data-act]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = parseInt(btn.getAttribute('data-id'),10);
+        var act = btn.getAttribute('data-act');
+        if(act==='remove'){
+          assets = assets.filter(function(a){ return a.id!==id; });
+        } else if(act==='service'){
+          assets = assets.map(function(a){
+            if(a.id!==id) return a;
+            var nextService = addDays(180);
+            return Object.assign({}, a, {service: nextService, docs: (a.docs||0)+1});
+          });
+        }
+        render();
+      });
+    });
+
+    save(assets);
+  }
+
+  document.getElementById('addForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    assets.push({
+      id: Date.now(),
+      name: document.getElementById('fName').value.trim() || "Untitled",
+      category: document.getElementById('fCategory').value,
+      installed: document.getElementById('fInstalled').value || iso(today),
+      warranty: document.getElementById('fWarranty').value || null,
+      service: document.getElementById('fService').value || null,
+      docs: 0
+    });
+    e.target.reset();
+    render();
+  });
+
+  render();
+})();
+</script>

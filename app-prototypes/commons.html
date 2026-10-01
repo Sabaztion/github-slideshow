@@ -1,0 +1,225 @@
+<title>Commons</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@500;600&family=Source+Sans+3:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#F1F4EC; --surface:#FFFFFF; --surface-2:#E3E9D9; --ink:#262A1F; --muted:#5C6553;
+    --accent:#3C7A89; --accent-soft:#DCEBEE; --accent-ink:#245560;
+    --ochre:#C97C3D; --ochre-soft:#F5E3D2; --line:#DDE3D3;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#12140F; --surface:#191C14; --surface-2:#1F2318; --ink:#E7EBDD; --muted:#9BA48F;
+      --accent:#6FB0BF; --accent-soft:#1E2E31; --accent-ink:#A9D6DF;
+      --ochre:#E0A164; --ochre-soft:#332619; --line:#2A2F21;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#12140F; --surface:#191C14; --surface-2:#1F2318; --ink:#E7EBDD; --muted:#9BA48F;
+    --accent:#6FB0BF; --accent-soft:#1E2E31; --accent-ink:#A9D6DF;
+    --ochre:#E0A164; --ochre-soft:#332619; --line:#2A2F21;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--bg); color:var(--ink); font-family:"Source Sans 3",system-ui,sans-serif; padding:24px 20px 48px;}
+  .wrap{max-width:720px; margin:0 auto; display:flex; flex-direction:column; gap:22px;}
+  .top{display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px;}
+  .brand{font-family:"Bitter",serif; font-weight:600; font-size:1.5rem;}
+  .neighborhood{color:var(--muted); font-size:0.82rem;}
+
+  .tabs{display:flex; gap:8px; flex-wrap:wrap;}
+  .tab{font:inherit; font-size:0.82rem; font-weight:600; padding:8px 14px; border-radius:999px; border:1px solid var(--line); background:var(--surface); color:var(--muted); cursor:pointer;}
+  .tab.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+
+  .posts{display:flex; flex-direction:column; gap:10px;}
+  .post{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px 16px; display:flex; gap:12px;}
+  .avatar{width:36px; height:36px; border-radius:50%; background:var(--surface-2); color:var(--ink); display:flex; align-items:center; justify-content:center; font-size:0.78rem; font-weight:600; flex-shrink:0;}
+  .post .main{flex:1; min-width:0;}
+  .post .head{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .badge{font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; padding:3px 8px; border-radius:6px;}
+  .badge.offer{background:var(--accent-soft); color:var(--accent-ink);}
+  .badge.need{background:var(--ochre-soft); color:var(--ochre);}
+  .badge.event{background:var(--surface-2); color:var(--muted);}
+  .post .title{font-weight:600; font-size:0.96rem; margin-top:4px;}
+  .post .desc{font-size:0.85rem; color:var(--muted); margin-top:4px; line-height:1.5;}
+  .post .meta{font-size:0.72rem; color:var(--muted); margin-top:8px; display:flex; gap:10px; align-items:center;}
+  .post .meta .spacer{flex:1;}
+  .minilink{background:none; border:none; color:var(--accent); font:inherit; font-size:0.72rem; font-weight:600; cursor:pointer; padding:0;}
+  .minilink.danger{color:var(--ochre);}
+  .replies{margin-top:10px; padding-top:10px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:8px;}
+  .reply{display:flex; gap:8px; font-size:0.82rem;}
+  .reply .who{font-weight:600; flex-shrink:0;}
+  .reply .body{color:var(--ink);}
+  .replyform{display:flex; gap:6px; margin-top:4px;}
+  .replyform input{flex:1; font:inherit; font-size:0.8rem; padding:7px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink);}
+  .replyform button{font:inherit; font-size:0.78rem; font-weight:600; padding:7px 12px; border-radius:8px; border:none; background:var(--accent); color:#fff; cursor:pointer;}
+  .sortrow{display:flex; gap:8px; align-items:center; font-size:0.78rem; color:var(--muted);}
+  .sortrow select{font:inherit; font-size:0.8rem; padding:6px 9px; border-radius:8px; border:1px solid var(--line); background:var(--surface); color:var(--ink);}
+
+  form.add{background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:10px;}
+  .row2{display:flex; gap:10px; flex-wrap:wrap;}
+  .field{display:flex; flex-direction:column; gap:4px; font-size:0.75rem; color:var(--muted); flex:1; min-width:140px;}
+  .field input, .field select, .field textarea{font:inherit; font-size:0.85rem; padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); resize:vertical;}
+  button[type=submit]{align-self:flex-start; font:inherit; font-size:0.85rem; font-weight:600; padding:9px 16px; border-radius:8px; border:none; background:var(--accent); color:#fff; cursor:pointer;}
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .tab:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div class="brand">Commons</div>
+    <div class="neighborhood">Maple Heights · within 1 mile</div>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="sortrow">
+    <span>Sort by</span>
+    <select id="sortSel"><option value="near">Nearest</option><option value="new">Newest</option></select>
+  </div>
+
+  <div class="posts" id="posts"></div>
+
+  <section>
+    <h2 style="font-family:'Bitter',serif; font-size:1rem; margin:0;">Post something</h2>
+    <form class="add" id="addForm">
+      <div class="row2">
+        <div class="field"><label>Type</label>
+          <select id="fType"><option value="offer">Offering</option><option value="need">Needed</option><option value="event">Event</option></select>
+        </div>
+        <div class="field"><label>Title</label><input id="fTitle" placeholder="e.g. Extra tomato seedlings" required></div>
+      </div>
+      <div class="field"><label>Details</label><textarea id="fDesc" rows="2" placeholder="A sentence or two"></textarea></div>
+      <button type="submit">Post to Commons</button>
+    </form>
+  </section>
+</div>
+
+<script>
+(function(){
+  var STORAGE_KEY = "commons.posts.v1";
+  var seed = [
+    {id:1, type:"offer", title:"Extra tomato seedlings", desc:"Started too many indoors — free to a good garden, pickup on the porch.", who:"RM", dist:"0.2 mi", when:"2h ago", ts:2, replies:[{who:"KD", body:"Still available? I can swing by tonight."}]},
+    {id:2, type:"need", title:"Borrow a stud finder", desc:"Hanging shelves this weekend, will return by Sunday.", who:"KD", dist:"0.4 mi", when:"5h ago", ts:5, replies:[]},
+    {id:3, type:"event", title:"Street cleanup Saturday 9am", desc:"Meeting at the corner of 5th and Elm, gloves and bags provided.", who:"TA", dist:"0.6 mi", when:"1d ago", ts:24, replies:[{who:"JP", body:"Count me in, bringing my kid too."},{who:"SO", body:"Can I bring an extra pair of gloves for someone?"}]},
+    {id:4, type:"offer", title:"Moving boxes, flattened", desc:"About 15 boxes, various sizes, free.", who:"JP", dist:"0.3 mi", when:"1d ago", ts:26, replies:[]},
+    {id:5, type:"need", title:"Ride to the airport Tuesday 6am", desc:"Happy to pay for gas, just need an early lift.", who:"SO", dist:"0.8 mi", when:"2d ago", ts:48, replies:[]}
+  ];
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function load(){
+    try{ var raw = localStorage.getItem(STORAGE_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+    return seed;
+  }
+  function save(p){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); }catch(e){} }
+
+  var posts = load();
+  var filter = "all";
+  var LABELS = {offer:"Offering", need:"Needed", event:"Event"};
+
+  var tabsBox = document.getElementById('tabs');
+  ["all","offer","need","event"].forEach(function(t){
+    var btn = document.createElement('button');
+    btn.className = 'tab' + (t===filter?' active':'');
+    btn.textContent = t==='all' ? 'All' : LABELS[t]+'s';
+    btn.addEventListener('click', function(){
+      filter = t;
+      Array.prototype.forEach.call(tabsBox.children, function(c){c.classList.remove('active');});
+      btn.classList.add('active');
+      render();
+    });
+    tabsBox.appendChild(btn);
+  });
+  tabsBox.firstChild.classList.add('active');
+
+  function render(){
+    var box = document.getElementById('posts');
+    box.innerHTML = '';
+    var visible = posts.filter(function(p){ return filter==='all' || p.type===filter; });
+    var sortMode = document.getElementById('sortSel').value;
+    visible = visible.slice().sort(function(a,b){
+      if(sortMode==='near') return parseFloat(a.dist)-parseFloat(b.dist);
+      return (a.ts||0)-(b.ts||0);
+    });
+    if(visible.length===0){
+      box.innerHTML = '<div class="post"><div class="main">Nothing here yet.</div></div>';
+    }
+    visible.forEach(function(p){
+      var el = document.createElement('div');
+      el.className = 'post';
+      var repliesHtml = (p.replies||[]).map(function(r){
+        return '<div class="reply"><span class="who">'+escapeHtml(r.who)+'</span><span class="body">'+escapeHtml(r.body)+'</span></div>';
+      }).join('');
+      el.innerHTML =
+        '<div class="avatar">'+escapeHtml(p.who)+'</div>'+
+        '<div class="main">'+
+          '<div class="head"><span class="badge '+p.type+'">'+LABELS[p.type]+'</span></div>'+
+          '<div class="title">'+escapeHtml(p.title)+'</div>'+
+          (p.desc ? '<div class="desc">'+escapeHtml(p.desc)+'</div>' : '')+
+          '<div class="meta"><span>'+p.dist+'</span><span>'+p.when+'</span><span class="spacer"></span>'+
+            (p.who==="You" ? '<button class="minilink danger" data-act="delete" data-id="'+p.id+'">Remove</button>' : '')+
+          '</div>'+
+          '<div class="replies">'+
+            repliesHtml+
+            '<form class="replyform" data-id="'+p.id+'"><input placeholder="Reply…" required><button type="submit">Send</button></form>'+
+          '</div>'+
+        '</div>';
+      box.appendChild(el);
+    });
+
+    box.querySelectorAll('button[data-act="delete"]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = parseInt(btn.getAttribute('data-id'),10);
+        posts = posts.filter(function(p){ return p.id!==id; });
+        save(posts);
+        render();
+      });
+    });
+    box.querySelectorAll('form.replyform').forEach(function(form){
+      form.addEventListener('submit', function(e){
+        e.preventDefault();
+        var id = parseInt(form.getAttribute('data-id'),10);
+        var input = form.querySelector('input');
+        var body = input.value.trim();
+        if(!body) return;
+        var post = posts.find(function(p){ return p.id===id; });
+        if(post){
+          post.replies = post.replies || [];
+          post.replies.push({who:"You", body:body});
+          save(posts);
+          render();
+        }
+      });
+    });
+  }
+
+  document.getElementById('sortSel').addEventListener('change', render);
+
+  document.getElementById('addForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var title = document.getElementById('fTitle').value.trim();
+    if(!title) return;
+    posts.unshift({
+      id: Date.now(),
+      type: document.getElementById('fType').value,
+      title: title,
+      desc: document.getElementById('fDesc').value.trim(),
+      who: "You",
+      dist: "0.0 mi",
+      when: "just now",
+      ts: 0,
+      replies: []
+    });
+    save(posts);
+    e.target.reset();
+    render();
+  });
+
+  render();
+})();
+</script>

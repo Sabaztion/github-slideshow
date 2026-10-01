@@ -1,0 +1,328 @@
+<title>Miqat</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+  :root{
+    --bg:#F5F7F2; --surface:#FFFFFF; --surface-2:#E9EDE4; --ink:#10241F; --muted:#55695F;
+    --accent:#B8923F; --accent-soft:#F3E9D2; --accent-ink:#7A5F24;
+    --teal:#1F6F63; --line:#DCE3DB;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0C1613; --surface:#12211C; --surface-2:#182A23; --ink:#E7EFE9; --muted:#93A69B;
+      --accent:#D4B268; --accent-soft:#332A15; --accent-ink:#E8CC8E;
+      --teal:#4FA593; --line:#1F332B;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0C1613; --surface:#12211C; --surface-2:#182A23; --ink:#E7EFE9; --muted:#93A69B;
+    --accent:#D4B268; --accent-soft:#332A15; --accent-ink:#E8CC8E;
+    --teal:#4FA593; --line:#1F332B;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--bg); color:var(--ink); font-family:"IBM Plex Sans",system-ui,sans-serif; padding:24px 20px 48px;}
+  .wrap{max-width:640px; margin:0 auto; display:flex; flex-direction:column; gap:26px;}
+  .top{display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px;}
+  .brand{font-family:"Amiri",serif; font-weight:700; font-size:1.6rem;}
+  .hijri{color:var(--muted); font-size:0.82rem; text-align:right;}
+  .hijri .g{font-size:0.72rem; opacity:0.8; display:block;}
+
+  .clockrow{display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px 16px;}
+  .clockrow input[type=range]{flex:1; accent-color:var(--accent);}
+  .clocklabel{font-family:"IBM Plex Mono",monospace; font-size:0.9rem; min-width:64px; text-align:right; font-variant-numeric:tabular-nums;}
+  .hint{color:var(--muted); font-size:0.76rem; white-space:nowrap;}
+
+  .next-card{background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:24px; text-align:center;}
+  .next-card .eyebrow{text-transform:uppercase; font-size:0.72rem; letter-spacing:0.1em; color:var(--teal); font-weight:600;}
+  .next-card .arabic{font-family:"Amiri",serif; font-size:2.4rem; margin:10px 0 2px;}
+  .next-card .name{font-size:1.1rem; color:var(--muted);}
+  .next-card .countdown{font-family:"IBM Plex Mono",monospace; font-size:1.7rem; margin-top:12px; font-variant-numeric:tabular-nums;}
+
+  h2.section{font-family:"Amiri",serif; font-weight:700; font-size:1.1rem; margin:0 0 12px;}
+
+  .prayers{display:flex; flex-direction:column; gap:8px;}
+  .prayer{display:flex; align-items:center; gap:14px; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px 16px;}
+  .prayer.active{border-color:var(--teal); background:var(--accent-soft);}
+  .prayer .ar{font-family:"Amiri",serif; font-size:1.3rem; min-width:64px;}
+  .prayer .en{flex:1; font-weight:500; font-size:0.92rem;}
+  .prayer .time{font-family:"IBM Plex Mono",monospace; font-size:0.88rem; color:var(--muted); font-variant-numeric:tabular-nums; min-width:78px; text-align:right;}
+  .check{width:26px; height:26px; border-radius:50%; border:2px solid var(--line); background:var(--surface); cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:0.8rem; color:transparent;}
+  .check.done{background:var(--teal); border-color:var(--teal); color:#fff;}
+  .jamaah{font-size:0.65rem; font-weight:600; padding:4px 8px; border-radius:6px; border:1px solid var(--line); background:var(--surface); color:var(--muted); cursor:pointer; white-space:nowrap;}
+  .jamaah.on{background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent);}
+  .jamaah[disabled]{opacity:0.4; cursor:not-allowed;}
+
+  .settings{display:flex; gap:10px; flex-wrap:wrap;}
+  .settings .field{display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:var(--muted); flex:1; min-width:150px;}
+  .settings select{font:inherit; font-size:0.85rem; padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:var(--surface); color:var(--ink);}
+
+  .monthgrid{display:grid; grid-template-columns:repeat(10,1fr); gap:6px;}
+  .day{aspect-ratio:1; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:0.62rem; font-family:"IBM Plex Mono",monospace; color:var(--muted); background:var(--surface-2);}
+  .day.l1{background:var(--accent-soft); color:var(--accent-ink);}
+  .day.l2{background:var(--teal); color:#fff; opacity:0.6;}
+  .day.l3{background:var(--teal); color:#fff;}
+  .day.today{outline:2px solid var(--accent); outline-offset:1px;}
+
+  .streak-row{display:flex; gap:12px;}
+  .stat{flex:1; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px; text-align:center;}
+  .stat .n{font-family:"IBM Plex Mono",monospace; font-size:1.6rem; font-variant-numeric:tabular-nums;}
+  .stat .l{font-size:0.74rem; color:var(--muted); margin-top:2px;}
+
+  .note{font-size:0.76rem; color:var(--muted); line-height:1.5;}
+  button:focus-visible, input:focus-visible{outline:2px solid var(--teal); outline-offset:2px;}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div class="brand">Miqat</div>
+    <div class="hijri" id="hijriDate">—<span class="g" id="gregDate"></span></div>
+  </div>
+
+  <div class="clockrow">
+    <span class="hint">Simulate time</span>
+    <input type="range" id="clock" min="0" max="1439" value="480">
+    <span class="clocklabel" id="clockLabel">08:00</span>
+  </div>
+
+  <div class="next-card">
+    <div class="eyebrow">Next prayer</div>
+    <div class="arabic" id="nextArabic">—</div>
+    <div class="name" id="nextName">—</div>
+    <div class="countdown" id="nextCountdown">—</div>
+  </div>
+
+  <section>
+    <h2 class="section">Settings</h2>
+    <div class="settings">
+      <div class="field"><label>Calculation method</label>
+        <select id="methodSel">
+          <option>ISNA (North America)</option>
+          <option>Muslim World League</option>
+          <option>Umm al-Qura (Makkah)</option>
+          <option>Egyptian General Authority</option>
+        </select>
+      </div>
+      <div class="field"><label>Asr convention (madhab)</label>
+        <select id="madhabSel">
+          <option value="standard">Standard (Shafi'i/Maliki/Hanbali)</option>
+          <option value="hanafi">Hanafi</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section">Today</h2>
+    <div class="prayers" id="prayerList"></div>
+  </section>
+
+  <section>
+    <div class="streak-row">
+      <div class="stat"><div class="n" id="streakN">0</div><div class="l">Day streak</div></div>
+      <div class="stat"><div class="n" id="todayN">0/5</div><div class="l">Completed today</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section">Last 30 days</h2>
+    <div class="monthgrid" id="monthGrid"></div>
+  </section>
+
+  <p class="note">Example times shown for illustration; the method and madhab settings shift them by an approximate amount to show why the choice matters, not from real astronomical calculation. A real build calculates all of this from your location using the actual angle conventions, and the Hijri date uses an arithmetic approximation — the visible new moon can shift the actual date by a day.</p>
+</div>
+
+<script>
+(function(){
+  var STORAGE_KEY = "miqat.state.v2";
+  var todayISO = new Date().toISOString().slice(0,10);
+
+  var BASE_PRAYERS = [
+    {key:"fajr", ar:"الفجر", en:"Fajr", min: 5*60+42},
+    {key:"dhuhr", ar:"الظهر", en:"Dhuhr", min: 12*60+18},
+    {key:"asr", ar:"العصر", en:"Asr", min: 15*60+45},
+    {key:"maghrib", ar:"المغرب", en:"Maghrib", min: 18*60+52},
+    {key:"isha", ar:"العشاء", en:"Isha", min: 20*60+15}
+  ];
+
+  var METHOD_OFFSETS = {
+    "ISNA (North America)": {fajr:0, isha:0},
+    "Muslim World League": {fajr:-4, isha:-3},
+    "Umm al-Qura (Makkah)": {fajr:6, isha:-32},
+    "Egyptian General Authority": {fajr:3, isha:2}
+  };
+
+  function computePrayers(method, madhab){
+    return BASE_PRAYERS.map(function(p){
+      var min = p.min;
+      var offsets = METHOD_OFFSETS[method] || {};
+      if(p.key==='fajr' && offsets.fajr) min += offsets.fajr;
+      if(p.key==='isha' && offsets.isha) min += offsets.isha;
+      if(p.key==='asr' && madhab==='hanafi') min += 45;
+      return Object.assign({}, p, {min:min});
+    });
+  }
+
+  function load(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(raw) return JSON.parse(raw);
+    }catch(e){}
+    return {byDate:{}};
+  }
+  function save(s){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }catch(e){} }
+
+  var state = load();
+  if(!state.byDate[todayISO]) state.byDate[todayISO] = {};
+
+  function fmt(min){
+    var h = Math.floor(min/60), m = min%60;
+    var ap = h>=12 ? 'PM':'AM';
+    var hh = h%12; if(hh===0) hh=12;
+    return hh + ':' + (m<10?'0':'')+m + ' ' + ap;
+  }
+  function fmtCountdown(mins){
+    var h = Math.floor(mins/60), m = mins%60;
+    if(h<=0) return m+" min";
+    return h+"h "+m+"m";
+  }
+
+  var HIJRI_MONTHS = ["Muharram","Safar","Rabi' al-awwal","Rabi' al-thani","Jumada al-awwal","Jumada al-thani","Rajab","Sha'ban","Ramadan","Shawwal","Dhu al-Qi'dah","Dhu al-Hijjah"];
+  function toHijri(date){
+    var y=date.getFullYear(), m=date.getMonth()+1, d=date.getDate();
+    var jd = Math.floor((1461*(y+4800+Math.floor((m-14)/12)))/4) +
+             Math.floor((367*(m-2-12*Math.floor((m-14)/12)))/12) -
+             Math.floor((3*Math.floor((y+4900+Math.floor((m-14)/12))/100))/4) +
+             d - 32075;
+    var l = jd - 1948440 + 10632;
+    var n = Math.floor((l-1)/10631);
+    l = l - 10631*n + 354;
+    var j = Math.floor((10985-l)/5316)*Math.floor((50*l)/17719) + Math.floor(l/5670)*Math.floor((43*l)/15238);
+    l = l - Math.floor((30-j)/15)*Math.floor((17719*j)/50) - Math.floor(j/16)*Math.floor((15238*j)/43) + 29;
+    var month = Math.floor((24*l)/709);
+    var day = l - Math.floor((709*month)/24);
+    var year = 30*n + j - 30;
+    return {day:day, month:HIJRI_MONTHS[month-1], year:year};
+  }
+
+  var now = new Date();
+  var hij = toHijri(now);
+  document.getElementById('hijriDate').innerHTML = hij.day+" "+hij.month+" "+hij.year+" AH<span class=\"g\">"+now.toLocaleDateString(undefined,{weekday:'long', month:'long', day:'numeric'})+"</span>";
+
+  function seedHistory(){
+    for(var i=1;i<=29;i++){
+      var d = new Date(now); d.setDate(d.getDate()-i);
+      var iso = d.toISOString().slice(0,10);
+      if(state.byDate[iso]) continue;
+      var hash = 0;
+      for(var c=0;c<iso.length;c++) hash += iso.charCodeAt(c);
+      var rec = {};
+      BASE_PRAYERS.forEach(function(p,pi){
+        rec[p.key] = ((hash+pi*7) % 10) > 1;
+      });
+      state.byDate[iso] = rec;
+    }
+    save(state);
+  }
+  seedHistory();
+
+  function render(nowMin){
+    document.getElementById('clockLabel').textContent = fmt(nowMin);
+    var today = state.byDate[todayISO];
+    var method = document.getElementById('methodSel').value;
+    var madhab = document.getElementById('madhabSel').value;
+    var PRAYERS = computePrayers(method, madhab).sort(function(a,b){return a.min-b.min;});
+
+    var list = document.getElementById('prayerList');
+    list.innerHTML = '';
+    var next=null;
+    PRAYERS.forEach(function(p){
+      if(p.min > nowMin && !next) next = p;
+    });
+    if(!next) next = PRAYERS[0];
+
+    PRAYERS.forEach(function(p){
+      var done = !!today[p.key];
+      var jamaah = !!today[p.key+'_jamaah'];
+      var row = document.createElement('div');
+      row.className = 'prayer' + (next && next.key===p.key ? ' active' : '');
+      row.innerHTML =
+        '<span class="ar">'+p.ar+'</span>'+
+        '<span class="en">'+p.en+'</span>'+
+        '<span class="time">'+fmt(p.min)+'</span>'+
+        '<button class="jamaah'+(jamaah?' on':'')+'" data-key="'+p.key+'" '+(done?'':'disabled')+'>Jama’ah</button>'+
+        '<button class="check'+(done?' done':'')+'" aria-label="Mark '+p.en+' complete" data-key="'+p.key+'">✓</button>';
+      list.appendChild(row);
+    });
+
+    list.querySelectorAll('.check').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var key = btn.getAttribute('data-key');
+        today[key] = !today[key];
+        if(!today[key]) today[key+'_jamaah'] = false;
+        save(state);
+        render(parseInt(document.getElementById('clock').value,10));
+      });
+    });
+    list.querySelectorAll('.jamaah').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        if(btn.disabled) return;
+        var key = btn.getAttribute('data-key');
+        today[key+'_jamaah'] = !today[key+'_jamaah'];
+        save(state);
+        render(parseInt(document.getElementById('clock').value,10));
+      });
+    });
+
+    document.getElementById('nextArabic').textContent = next.ar;
+    document.getElementById('nextName').textContent = next.en;
+    var diff = next.min>nowMin ? next.min-nowMin : (1440-nowMin)+next.min;
+    document.getElementById('nextCountdown').textContent = "in " + fmtCountdown(diff);
+
+    var doneCount = BASE_PRAYERS.filter(function(p){return today[p.key];}).length;
+    document.getElementById('todayN').textContent = doneCount+"/5";
+
+    var streak = 0;
+    var cursor = new Date();
+    while(true){
+      var iso = cursor.toISOString().slice(0,10);
+      var rec = state.byDate[iso];
+      var complete = rec && BASE_PRAYERS.every(function(p){return rec[p.key];});
+      if(iso === todayISO){
+        if(doneCount<5) { cursor.setDate(cursor.getDate()-1); continue; }
+      } else if(!complete){
+        break;
+      }
+      streak++;
+      cursor.setDate(cursor.getDate()-1);
+      if(streak>365) break;
+    }
+    document.getElementById('streakN').textContent = streak;
+
+    var grid = document.getElementById('monthGrid');
+    grid.innerHTML = '';
+    for(var i=29;i>=0;i--){
+      var d = new Date(now); d.setDate(d.getDate()-i);
+      var iso2 = d.toISOString().slice(0,10);
+      var rec2 = iso2===todayISO ? today : (state.byDate[iso2]||{});
+      var count = BASE_PRAYERS.filter(function(p){return rec2[p.key];}).length;
+      var lvl = count===0 ? '' : (count<3 ? 'l1' : (count<5 ? 'l2' : 'l3'));
+      var cell = document.createElement('div');
+      cell.className = 'day' + (lvl?' '+lvl:'') + (iso2===todayISO?' today':'');
+      cell.textContent = d.getDate();
+      cell.title = iso2 + ': ' + count + '/5';
+      grid.appendChild(cell);
+    }
+  }
+
+  document.getElementById('methodSel').addEventListener('change', function(){ render(parseInt(document.getElementById('clock').value,10)); });
+  document.getElementById('madhabSel').addEventListener('change', function(){ render(parseInt(document.getElementById('clock').value,10)); });
+
+  var clock = document.getElementById('clock');
+  clock.addEventListener('input', function(){ render(parseInt(clock.value,10)); });
+  var initMin = now.getHours()*60+now.getMinutes();
+  clock.value = initMin;
+  render(initMin);
+})();
+</script>

@@ -1,0 +1,267 @@
+<title>Build Plans</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --bg:#F7F7F5; --surface:#FFFFFF; --surface-2:#EEEFEA; --ink:#1C1F1A; --muted:#5F6459;
+    --accent:#35507A; --accent-soft:#E3E9F1; --accent-ink:#233B5C;
+    --line:#E2E2DC; --code-bg:#EEF1EE; --amber:#8A6520; --amber-soft:#F3E9D2;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14161A; --surface:#1B1E23; --surface-2:#20242A; --ink:#E7E9E3; --muted:#969C90;
+      --accent:#8FB0DD; --accent-soft:#23303F; --accent-ink:#C3D6EE;
+      --line:#2A2E33; --code-bg:#20242A; --amber:#D9B268; --amber-soft:#332A15;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14161A; --surface:#1B1E23; --surface-2:#20242A; --ink:#E7E9E3; --muted:#969C90;
+    --accent:#8FB0DD; --accent-soft:#23303F; --accent-ink:#C3D6EE;
+    --line:#2A2E33; --code-bg:#20242A; --amber:#D9B268; --amber-soft:#332A15;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--bg); color:var(--ink); font-family:"IBM Plex Sans",system-ui,sans-serif; padding:28px 20px 56px;}
+  .wrap{max-width:820px; margin:0 auto; display:flex; flex-direction:column; gap:22px;}
+  h1{font-family:"Source Serif 4",serif; font-weight:600; font-size:1.7rem; margin:0; text-wrap:balance;}
+  .lede{color:var(--muted); font-size:0.92rem; max-width:66ch; line-height:1.55; margin:0;}
+
+  .tabs{display:flex; gap:8px; flex-wrap:wrap; position:sticky; top:env(safe-area-inset-top,0px); background:var(--bg); padding-block:8px; z-index:2;}
+  .tab{font:inherit; font-size:0.82rem; font-weight:600; padding:8px 14px; border-radius:999px; border:1px solid var(--line); background:var(--surface); color:var(--muted); cursor:pointer;}
+  .tab.active{background:var(--accent); color:var(--surface); border-color:var(--accent);}
+
+  .panel{display:none; flex-direction:column; gap:22px;}
+  .panel.active{display:flex;}
+
+  .heading{display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap;}
+  .appname{font-family:"Source Serif 4",serif; font-weight:600; font-size:1.4rem;}
+  .scope{font-size:0.68rem; text-transform:uppercase; letter-spacing:0.06em; font-weight:700; padding:4px 10px; border-radius:6px; white-space:nowrap;}
+  .scope.s{background:var(--accent-soft); color:var(--accent-ink);}
+  .scope.m{background:var(--amber-soft); color:var(--amber);}
+  .scope.l{background:var(--surface-2); color:var(--muted);}
+  .pitch{color:var(--muted); font-size:0.9rem; line-height:1.55; max-width:66ch; margin-top:-10px;}
+
+  h2.section{font-family:"Source Serif 4",serif; font-weight:600; font-size:1.02rem; margin:0 0 10px; display:flex; align-items:center; gap:8px;}
+
+  .entities{display:flex; flex-direction:column; gap:10px;}
+  .entity{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px;}
+  .entity .ename{font-family:"IBM Plex Mono",monospace; font-size:0.85rem; font-weight:500; color:var(--accent-ink); margin-bottom:6px;}
+  .fields{display:flex; flex-wrap:wrap; gap:6px;}
+  .field-chip{font-family:"IBM Plex Mono",monospace; font-size:0.72rem; background:var(--code-bg); border:1px solid var(--line); border-radius:6px; padding:3px 8px; color:var(--muted);}
+
+  ul.plain{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px;}
+  ul.plain li{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:10px 14px; font-size:0.86rem; line-height:1.5;}
+  ul.plain li b{font-weight:600;}
+
+  .stack-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px;}
+  .stack-card{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px;}
+  .stack-card .l{font-size:0.68rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted);}
+  .stack-card .v{font-size:0.86rem; margin-top:4px; font-weight:500;}
+
+  .callout{background:var(--accent-soft); border-radius:12px; padding:14px 16px; font-size:0.84rem; color:var(--accent-ink); line-height:1.55;}
+  button:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+</style>
+
+<div class="wrap">
+  <h1>Six build plans</h1>
+  <p class="lede">Each prototype boiled down to what it would actually take to ship: the data it needs to store, the screens it needs, what has to happen server-side, and a stack that fits the scope. Scope tags are rough sizing (Small / Medium / Large), not fixed timelines — team size and existing infrastructure move them more than anything here does.</p>
+
+  <div class="tabs" id="tabs"></div>
+  <div id="panels"></div>
+</div>
+
+<script>
+(function(){
+  var APPS = [
+    {
+      id:"momentum", name:"Momentum", scope:"m",
+      pitch:"A day planner that reasons about what deserves your attention right now, instead of listing everything flat.",
+      entities:[
+        {name:"user", fields:["id","timezone","work_hours_start","work_hours_end","calendar_sync_token"]},
+        {name:"commitment", fields:["id","user_id","title","start_at","end_at","priority","source (manual|calendar)","external_event_id"]},
+        {name:"priority_signal", fields:["id","commitment_id","kind (deadline|blocker|recurrence|staleness)","weight","note"]},
+        {name:"focus_log", fields:["id","user_id","commitment_id","surfaced_at","action (worked|skipped|deferred)"]}
+      ],
+      screens:[
+        "<b>Right Now</b> — the single surfaced focus item plus its reasoning",
+        "<b>Today rail</b> — horizontal timeline, tap to inspect or edit a block",
+        "<b>Add / edit commitment</b> — manual entry, or auto-created from calendar sync",
+        "<b>Weekly review</b> — what got worked vs. skipped, to tune the ranking"
+      ],
+      backend:[
+        "Calendar ingestion (Google/Outlook OAuth + webhook or polling sync)",
+        "Ranking service: scores commitments by priority, proximity, staleness (last-touched), and dependency flags — this is the actual product, everything else is CRUD",
+        "Push notification service for \"right now changed\" nudges",
+        "Event store for focus_log, used to retrain/tune ranking weights over time"
+      ],
+      stack:[["Client","React Native or SwiftUI + Jetpack Compose"],["Backend","Node/TypeScript or Go, Postgres"],["Ranking","Rules engine first; only reach for ML once focus_log has volume"],["Calendar","Google Calendar API, Microsoft Graph"]],
+      note:"The hard part isn't the CRUD — it's the ranking heuristic. Ship a transparent rules-based scorer before ever reaching for a model; users need to trust *why* something was surfaced."
+    },
+    {
+      id:"keystone", name:"Keystone", scope:"s",
+      pitch:"A single record of every home system, its warranty, and when it needs attention next.",
+      entities:[
+        {name:"property", fields:["id","user_id","address","purchased_at"]},
+        {name:"asset", fields:["id","property_id","name","category","installed_at","warranty_expires_at","service_interval_days"]},
+        {name:"service_event", fields:["id","asset_id","performed_at","cost_cents","vendor","notes"]},
+        {name:"document", fields:["id","asset_id","file_url","kind (manual|receipt|warranty_card)","uploaded_at"]}
+      ],
+      screens:[
+        "<b>Dashboard</b> — overdue/due-soon counts, document count",
+        "<b>Asset registry</b> — grouped by category, warranty status visible at a glance",
+        "<b>Asset detail</b> — service history, attached documents, edit fields",
+        "<b>Add asset</b> — manual entry, optional receipt photo to seed dates via OCR later"
+      ],
+      backend:[
+        "File storage for documents/photos (S3-compatible + signed URLs)",
+        "Scheduled job computing next-due dates from service_interval_days and pushing reminders",
+        "Optional: OCR pass on uploaded receipts to pre-fill installed_at/warranty_expires_at",
+        "Optional: manufacturer warranty-length lookup (no reliable public API — likely a maintained internal table)"
+      ],
+      stack:[["Client","React Native or a simple mobile-first PWA — low interaction complexity"],["Backend","Rails or Django; this is a CRUD-heavy app, don't over-engineer it"],["Storage","S3 + CloudFront or equivalent"],["Notifications","Email first, push later"]],
+      note:"This is the most conventional build of the six — mostly a well-modeled CRUD app. The differentiator is data entry friction: nail the \"add asset in under 20 seconds\" flow or nobody populates it."
+    },
+    {
+      id:"tideline", name:"Tideline", scope:"m",
+      pitch:"Budgeting built around volatile income — a smoothing reserve instead of a monthly envelope.",
+      entities:[
+        {name:"account_link", fields:["id","user_id","institution","access_token_ref","status"]},
+        {name:"transaction", fields:["id","account_id","amount_cents","direction (income|expense)","occurred_at","category","is_recurring"]},
+        {name:"reserve", fields:["user_id","balance_cents","target_weeks","updated_at"]},
+        {name:"expected_payment", fields:["id","user_id","label","amount_cents","expected_at","confidence"]}
+      ],
+      screens:[
+        "<b>Safe-to-spend</b> — the daily number and its reasoning",
+        "<b>Income history</b> — waveform of recent weeks, rolling average",
+        "<b>Reserve</b> — tank visualization, target vs. actual, adjust target",
+        "<b>Upcoming</b> — known bills and expected payments, add/edit"
+      ],
+      backend:[
+        "Bank connection aggregator (Plaid or a regional equivalent) for automatic transaction import",
+        "Categorization service (recurring-bill detection is the valuable part, not generic category tagging)",
+        "Safe-to-spend calculation job, re-run on every new transaction or reserve edit",
+        "Notification when a bill is due before the reserve covers it"
+      ],
+      stack:[["Client","React Native"],["Backend","Go or Node, Postgres for ledger-style transaction data"],["Bank data","Plaid (US), TrueLayer/Tink (EU/UK)"],["Compliance","Plan for PCI/data-handling review before storing linked account data — this is the one app of the six with real regulatory surface"]],
+      note:"Financial apps carry real compliance weight (data handling, possibly money-transmission adjacency). Budget real time for that before writing product code, not after."
+    },
+    {
+      id:"relay", name:"Relay", scope:"m",
+      pitch:"Live translation into three or more languages at once, for people who move between more than a pair.",
+      entities:[
+        {name:"user_pref", fields:["user_id","base_lang","active_target_langs (max 4)"]},
+        {name:"translation_request", fields:["id","user_id","source_text","source_lang","created_at"]},
+        {name:"translation_result", fields:["id","request_id","target_lang","text","engine"]},
+        {name:"saved_phrase", fields:["id","user_id","source_text","source_lang","translations (jsonb)"]}
+      ],
+      screens:[
+        "<b>Relay view</b> — input plus N translation cards, live",
+        "<b>Language picker</b> — base language + up to 4 simultaneous targets",
+        "<b>Voice input</b> — speak instead of type, per source language",
+        "<b>Saved phrases</b> — phrasebook built from what the user actually re-uses"
+      ],
+      backend:[
+        "Translation engine: DeepL or Google Cloud Translation API for text; add speech-to-text (Whisper API or cloud STT) for voice input",
+        "Fan-out call pattern: one source text → N parallel translation calls — watch latency and cost, this multiplies per active target language",
+        "Caching layer for repeated phrases to control API spend",
+        "Right-to-left layout handling for Arabic/Hebrew targets"
+      ],
+      stack:[["Client","React Native — needs solid RTL and CJK/Arabic font support"],["Backend","Thin proxy/orchestration layer over a translation API; little state to own"],["Translation","DeepL (higher quality, fewer languages) or Google Cloud Translation (broader coverage)"],["Speech","Cloud STT provider matching your translation vendor's language coverage"]],
+      note:"The whole product is the simultaneous layout — the translation itself is a paid API call, not IP you build. Spend the engineering budget on latency (streaming partial results per card) and layout, not on the translation model."
+    },
+    {
+      id:"miqat", name:"Miqat", scope:"s",
+      pitch:"Daily prayer times, Hijri date, and a completion streak, calculated from where you actually are.",
+      entities:[
+        {name:"user", fields:["id","latitude","longitude","calculation_method","madhab (for Asr timing)"]},
+        {name:"prayer_completion", fields:["id","user_id","date","prayer (fajr|dhuhr|asr|maghrib|isha)","completed_at","in_congregation"]},
+        {name:"streak_cache", fields:["user_id","current_streak","longest_streak","last_computed_date"]}
+      ],
+      screens:[
+        "<b>Today</b> — next prayer countdown, today's five with completion toggles",
+        "<b>Monthly view</b> — Hijri calendar with completion history",
+        "<b>Settings</b> — calculation method (ISNA/MWL/Umm al-Qura/etc.), madhab, location source",
+        "<b>Streak</b> — current and longest, shareable summary"
+      ],
+      backend:[
+        "Prayer-time calculation from an established library (Adhan.js / al-Adhan API) using standard sun-angle conventions — do not hand-roll the astronomy",
+        "Accurate Hijri date requires either a moon-sighting-based data source (varies by region/authority) or a clearly-labeled tabular approximation",
+        "Location: device GPS with a manual-city fallback for indoor/permission-denied cases",
+        "Local push notifications scheduled per calculated prayer time, recalculated daily (times shift slightly every day)"
+      ],
+      stack:[["Client","React Native or native — needs reliable background/local notification scheduling"],["Calculation","Adhan.js (client-side, no network needed) or al-Adhan API"],["Backend","Minimal — this can run almost entirely on-device aside from account sync"],["Storage","On-device first (SQLite), sync layer optional for multi-device streaks"]],
+      note:"Get the calculation method selectable and correct — different schools/regions expect different conventions, and shipping one silently-assumed method reads as not understanding the audience."
+    },
+    {
+      id:"commons", name:"Commons", scope:"l",
+      pitch:"A hyperlocal board for offering, needing, and organizing things nearby — without the moderation problems of a general feed.",
+      entities:[
+        {name:"neighborhood", fields:["id","name","boundary (geojson)"]},
+        {name:"membership", fields:["user_id","neighborhood_id","verified_at","verification_method"]},
+        {name:"post", fields:["id","author_id","neighborhood_id","type (offer|need|event)","title","body","expires_at","status"]},
+        {name:"response", fields:["id","post_id","author_id","body","created_at"]},
+        {name:"report", fields:["id","post_id","reporter_id","reason","status"]}
+      ],
+      screens:[
+        "<b>Board</b> — filterable feed by type and distance",
+        "<b>Post detail</b> — responses thread, contact-without-exposing-address flow",
+        "<b>New post</b> — type, title, body, optional expiry",
+        "<b>Address verification</b> — onboarding gate before first post",
+        "<b>Moderation queue</b> — for reported posts (internal/admin screen)"
+      ],
+      backend:[
+        "Address verification (postcard-code confirmation, like Nextdoor, or a lighter proof-of-location) — this is the actual trust mechanism the product depends on",
+        "Geofencing to scope posts/feeds to a real neighborhood boundary, not just a radius from a point",
+        "Moderation pipeline: report queue, rate limiting on new accounts, basic abuse-pattern detection",
+        "Notification service for responses and nearby new posts"
+      ],
+      stack:[["Client","React Native or mobile web — low graphical complexity"],["Backend","Standard REST/GraphQL service, Postgres with PostGIS for geo queries"],["Trust & safety","Budget for this as a first-class workstream, not a follow-on — it's most of why Nextdoor-style products succeed or fail"],["Geo","PostGIS or a managed geospatial index"]],
+      note:"This is the largest build of the six because the hard problem is social, not technical: verified locality and low-friction moderation are what determine whether the board stays useful instead of decaying into spam."
+    }
+  ];
+
+  var SCOPE_LABEL = {s:"Small scope", m:"Medium scope", l:"Large scope"};
+
+  var tabs = document.getElementById('tabs');
+  var panels = document.getElementById('panels');
+
+  APPS.forEach(function(app, idx){
+    var tab = document.createElement('button');
+    tab.className = 'tab' + (idx===0?' active':'');
+    tab.textContent = app.name;
+    tab.addEventListener('click', function(){
+      Array.prototype.forEach.call(tabs.children, function(t){t.classList.remove('active');});
+      Array.prototype.forEach.call(panels.children, function(p){p.classList.remove('active');});
+      tab.classList.add('active');
+      document.getElementById('panel-'+app.id).classList.add('active');
+    });
+    tabs.appendChild(tab);
+
+    var panel = document.createElement('div');
+    panel.className = 'panel' + (idx===0?' active':'');
+    panel.id = 'panel-'+app.id;
+
+    var entitiesHtml = app.entities.map(function(e){
+      return '<div class="entity"><div class="ename">'+e.name+'</div><div class="fields">'+
+        e.fields.map(function(f){return '<span class="field-chip">'+f+'</span>';}).join('')+
+      '</div></div>';
+    }).join('');
+
+    var screensHtml = app.screens.map(function(s){ return '<li>'+s+'</li>'; }).join('');
+    var backendHtml = app.backend.map(function(b){ return '<li>'+b+'</li>'; }).join('');
+    var stackHtml = app.stack.map(function(s){ return '<div class="stack-card"><div class="l">'+s[0]+'</div><div class="v">'+s[1]+'</div></div>'; }).join('');
+
+    panel.innerHTML =
+      '<div class="heading"><span class="appname">'+app.name+'</span><span class="scope '+app.scope+'">'+SCOPE_LABEL[app.scope]+'</span></div>'+
+      '<p class="pitch">'+app.pitch+'</p>'+
+      '<div><h2 class="section">Data model</h2><div class="entities">'+entitiesHtml+'</div></div>'+
+      '<div><h2 class="section">Core screens</h2><ul class="plain">'+screensHtml+'</ul></div>'+
+      '<div><h2 class="section">Backend &amp; services</h2><ul class="plain">'+backendHtml+'</ul></div>'+
+      '<div><h2 class="section">Suggested stack</h2><div class="stack-grid">'+stackHtml+'</div></div>'+
+      '<div class="callout">'+app.note+'</div>';
+
+    panels.appendChild(panel);
+  });
+})();
+</script>
